@@ -50,7 +50,9 @@ function IdePage({ subPath }: PluginNavPanelProps) {
         onChange={(event) => navigate.toPluginPanel(PANEL_PATH, { subPath: event.target.value })}
       >
         {routed !== null && !workspaces?.some((w) => `${w.ref.kind}/${w.ref.id}` === key) ? (
-          <option value={key}>{scope?.kind === "thread" ? "This thread's workspace" : key}</option>
+          <option value={key}>
+            {scope?.kind === "thread" ? "This thread's workspace" : scope?.kind === "environment" ? "This workspace" : "This project"}
+          </option>
         ) : null}
         {groups.map((group) => (
           <optgroup key={group.projectId} label={group.projectName}>
