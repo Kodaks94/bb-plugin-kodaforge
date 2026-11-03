@@ -1022,7 +1022,7 @@ export function Workbench({
             onClick={() => setPalette("python")}
           >
             <FileIcon path="python.py" className="size-3" />
-            {pyEnv ? `${pyEnv.version} · ${pyEnv.name.replace(/^(conda|pyenv|poetry|system): /, "")}` : "Select Python"}
+            {pyEnv ? `${pyEnv.version} · ${pyEnv.kind === "pyenv" ? "pyenv" : pyEnv.name.replace(/^(conda|poetry|system): /, "")}` : "Select Python"}
           </button>
         ) : null}
         {Object.entries(lsp.states).map(([language, state]) =>
@@ -1052,6 +1052,7 @@ export function Workbench({
           files={fileList?.paths ?? null}
           commands={commands}
           symbols={lsp.symbols}
+          symbolsReady={Object.values(lsp.states).some((state) => state?.status === "ready")}
           searchText={searchText}
           onOpenFile={(path) => void openFile(path)}
           onOpenAt={(path, line, column, length) => void openAt(path, line, column, length)}
