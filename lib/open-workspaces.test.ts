@@ -30,3 +30,12 @@ it("reads only valid saved keys", () => {
   expect(parseSaved("{bad")).toEqual([]);
   expect(parseSaved(null)).toEqual([]);
 });
+
+import { settingAt } from "../components/lsp.js";
+it("answers workspace/configuration sections from nested settings", () => {
+  const settings = { python: { pythonPath: "/w/.venv/bin/python", analysis: { typeCheckingMode: "basic" } } };
+  expect(settingAt(settings, "python.pythonPath")).toBe("/w/.venv/bin/python");
+  expect(settingAt(settings, "python.analysis")).toEqual({ typeCheckingMode: "basic" });
+  expect(settingAt(settings, "python.missing")).toBeNull();
+  expect(settingAt({}, "python")).toBeNull();
+});

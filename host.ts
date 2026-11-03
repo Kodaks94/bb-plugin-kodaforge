@@ -14,6 +14,7 @@ import * as gitOps from "./lib/git-ops.js";
 import { runWorkflowCommand } from "./lib/workflows.js";
 import { resolvePythonDebugger } from "./lib/debug-adapter.js";
 import { findBinary } from "./lib/lsp-host.js";
+import { discoverPythonEnvs } from "./lib/python-envs.js";
 
 const lsp = new LspHost();
 
@@ -69,6 +70,8 @@ export default experimental_defineHostEntry({
     gitStash: async ({ root, action, message, ref }) => ({ stashes: await gitOps.stash(root, action, { message, ref }) }),
 
     workflows: async ({ root, context, request }) => ({ result: await runWorkflowCommand(root, context, request) }),
+
+    pythonEnvs: async ({ root }) => ({ envs: await discoverPythonEnvs(root) }),
 
     gitStatus: async ({ root }, context) => {
       const result = await run("git", ["status", "--porcelain=v1", "-z", "-b", "--untracked-files=all"], {
