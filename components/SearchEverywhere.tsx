@@ -44,6 +44,7 @@ export function SearchEverywhere({
   files,
   commands,
   symbols,
+  symbolsReady,
   searchText,
   onOpenFile,
   onOpenAt,
@@ -53,6 +54,8 @@ export function SearchEverywhere({
   files: string[] | null;
   commands: PaletteItem[];
   symbols(query: string): Promise<WorkspaceSymbol[]>;
+  /** False until a language server runs; servers start when a file of their language opens. */
+  symbolsReady: boolean;
   searchText(query: string): Promise<TextHit[]>;
   onOpenFile(path: string): void;
   onOpenAt(path: string, line: number, column: number, length: number): void;
@@ -156,7 +159,15 @@ export function SearchEverywhere({
   };
 
   const empty =
-    query.mode === "line" ? "Type a line number, like :42 or :42:7" : files === null ? "Loading…" : found.busy ? "Searching…" : "Nothing found";
+    query.mode === "line"
+      ? "Type a line number, like :42 or :42:7"
+      : files === null
+        ? "Loading…"
+        : found.busy
+          ? "Searching…"
+          : query.mode === "symbols" && !symbolsReady
+            ? "Symbols come from the language servers. Open a Python or TypeScript file to start one."
+            : "Nothing found";
 
   return (
     <div className="absolute inset-0 z-50 flex justify-center bg-black/20 pt-12" onMouseDown={onClose}>

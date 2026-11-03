@@ -1,6 +1,7 @@
 // Finds the Python environments a workspace can use, VS Code style: venvs inside
 // the workspace first (venv, uv, Poetry's in-project .venv), then conda, pyenv,
 // Poetry's cache, and Python on PATH. Each is checked by running it.
+import { createHash } from "node:crypto";
 import { access, readdir, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -81,15 +82,22 @@ export async function discoverPythonEnvs(root: string, deps: Deps = defaultDeps(
   }
 
   for (const dir of await children(path.join(deps.home, ".pyenv", "versions"))) {
-    add(path.join(dir, "bin", "python"), "pyenv", `pyenv: ${path.basename(dir)}`, false, null);
+    add(path.join(dir, "bin", "python"), "pyenv", `pyenv: ${path.basename(dir)}`, false, `export PATH=${quote(path.join(dir, "bin"))}:"$PATH"`);
   }
 
-  // Poetry names cache envs "<project>-<hash>-py3.x".
-  const slug = path.basename(root).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  for (const cache of [path.join(deps.home, "Library", "Caches", "pypoetry", "virtualenvs"), path.join(deps.home, ".cache", "pypoetry", "virtualenvs")]) {
-    for (const dir of await children(cache)) {
-      if (!path.basename(dir).toLowerCase().startsWith(`${slug}-`)) continue;
-      add(path.join(dir, "bin", "python"), "poetry", `poetry: ${path.basename(dir)}`, false, `source ${quote(path.join(dir, "bin", "activate"))}`);
+  // Poetry names cache envs "<name>-<hash>-py3.x"; the hash is from the project's real path.
+  // Projects: the root, and folders one level down with a pyproject.toml (like the venv scan).
+  const projects = [root];
+  for (const dir of await children(root)) {
+    if (!SKIP.has(path.basename(dir)) && (await exists(path.join(dir, "pyproject.toml")))) projects.push(dir);
+  }
+  for (const project of projects) {
+    const hash = createHash("sha256").update(await realpath(project).catch(() => project)).digest("base64url").slice(0, 8);
+    for (const cache of [path.join(deps.home, "Library", "Caches", "pypoetry", "virtualenvs"), path.join(deps.home, ".cache", "pypoetry", "virtualenvs")]) {
+      for (const dir of await children(cache)) {
+        if (!path.basename(dir).includes(`-${hash}-py`)) continue;
+        add(path.join(dir, "bin", "python"), "poetry", `poetry: ${path.basename(dir)}`, false, `source ${quote(path.join(dir, "bin", "activate"))}`);
+      }
     }
   }
 
