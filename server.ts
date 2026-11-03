@@ -630,7 +630,7 @@ export default async function plugin(bb: BbPluginApi) {
       const { envs } = await host.call("pythonEnvs", { root: resolved.root }, { hostId: resolved.hostId });
       const saved = await bb.storage.kv.get<string>(`python:${resolved.hostId}:${resolved.root}`);
       // A saved choice that no longer exists falls back to the default: the workspace's own env.
-      const selected = envs.find((env) => env.python === saved)?.python ?? envs.find((env) => env.local)?.python ?? null;
+      const selected = envs.find((env) => env.python === saved)?.python ?? envs.find((env) => env.local || env.kind === "poetry")?.python ?? null;
       return { envs, selected };
     },
 
