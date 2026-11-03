@@ -3,6 +3,19 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [0.3.0] - 2026-11-03
+
+### Added
+- Open several projects at once: workspaces sit as tabs in the title bar, each colour-coded by
+  project, with a dot for unsaved changes. The **+** menu lists every project checkout,
+  worktree and thread workspace, grouped by project. Switching keeps each workspace's
+  editors, unsaved buffers, terminals and debugger alive, and the open tabs come back next time.
+- Thread workspaces that are their own folder (such as personal workspaces) now appear in
+  the workspace list, named after their thread.
+
+### Fixed
+- The workspace picker showed a raw id (`environment/env_…`) for a workspace opened by link.
+
 ## [0.2.2] - 2026-11-03
 
 ### Changed
@@ -41,6 +54,7 @@ them from the `vX.Y.Z` tags.
 - Agent chat, threads and workflows in a right-hand panel.
 - Koda the bear, and colour coding from the BB theme.
 
+[0.3.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.1.0...v0.2.0
