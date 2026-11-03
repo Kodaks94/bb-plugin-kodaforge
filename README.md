@@ -15,7 +15,7 @@
 The quickest way is one command, pinned to the 0.x releases so updates arrive without breaking changes:
 
 ```sh
-bb plugin install git:https://github.com/Kodaks94/bb-plugin-kodaforge.git@^0.2.1 --yes
+bb plugin install 'git:https://github.com/Kodaks94/bb-plugin-kodaforge.git@>=0.4.0 <1.0.0' --yes
 ```
 
 Or add the marketplace once. KodaForge then appears in BB's plugin store, and future plugins
@@ -286,7 +286,7 @@ passes, and nobody can force-push or delete it.
    `git checkout main && git pull && git tag -a v0.3.0 -m "KodaForge 0.3.0" && git push origin v0.3.0`.
 4. The Release workflow checks that the tag matches `package.json`, runs the tests, and
    publishes the GitHub Release with notes from the CHANGELOG, the package tarball, and the
-   package on GitHub Packages. BB users on `^0.x` get it from `bb plugin update kodaforge`.
+   package on GitHub Packages. BB users get it from `bb plugin update kodaforge`.
 
 `monaco/` (the prebuilt editor and icon bundle) is committed, because BB's git installs don't
 run build scripts. CI rebuilds it and fails if the committed icon map is out of date.
