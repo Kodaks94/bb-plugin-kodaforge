@@ -81,7 +81,19 @@ let lastActiveWorkbench: symbol | null = null;
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
-export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode }) {
+export function Workbench({
+  scope,
+  header,
+  active = true,
+  onDirtyChange,
+}: {
+  scope: Scope;
+  header?: ReactNode;
+  /** False while another workspace tab is showing: stays alive (buffers, terminals) but takes no keys. */
+  active?: boolean;
+  /** Reports whether any open file has unsaved changes, for the workspace tab's dot. */
+  onDirtyChange?(dirty: boolean): void;
+}) {
   const rpc = useRpc<typeof rpcContract>();
   const [resolved, setResolved] = useState<ResolvedScope | null>(null);
   const [monaco, setMonaco] = useState<Monaco | null>(null);
@@ -478,8 +490,13 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
   }, [identity]);
   const ready = resolved !== null && monaco !== null;
   useEffect(() => {
-    if (ready) rootRef.current?.focus();
-  }, [ready]);
+    if (ready && active) {
+      rootRef.current?.focus();
+      lastActiveWorkbench = identity;
+    } else if (!active && lastActiveWorkbench === identity) {
+      lastActiveWorkbench = null;
+    }
+  }, [ready, active, identity]);
 
   const onKeyDownCapture = (event: React.KeyboardEvent) => {
     // Debugging keys, as in VS Code.
@@ -684,6 +701,14 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
     celebrating: celebrating > 0 && Date.now() - celebrating < 1600,
     idleMs: now - lastActivity,
   });
+
+  // Tell the workspace tab whether this workspace has unsaved edits.
+  const anyDirty = open.some((path) => docs.isDirty(path));
+  const onDirtyRef = useRef(onDirtyChange);
+  onDirtyRef.current = onDirtyChange;
+  useEffect(() => {
+    onDirtyRef.current?.(anyDirty);
+  }, [anyDirty]);
 
   if (fatal !== null) {
     return <div className="p-6 text-sm text-destructive" role="alert">{fatal}</div>;

@@ -35,6 +35,15 @@ It opens in two places, both marked with Koda's bear icon:
 - **KodaForge** in the sidebar: a full page with a workspace picker.
 - **KodaForge** in a thread's side-panel actions: a tab pinned to that thread's workspace.
 
+## Several projects at once
+
+Open as many workspaces as you like (project checkouts, worktrees, thread workspaces) as
+tabs in KodaForge's title bar, and click to switch:
+- **+** lists every workspace, grouped by project. Each project has its own colour.
+- Switching keeps everything alive: open files, unsaved edits, terminals, a paused debugger.
+- A dot marks a workspace with unsaved changes, and closing it asks first.
+- Your open tabs are remembered.
+
 ## Koda
 
 Koda is a 16×14 pixel bear cub. He lives at the bottom of the activity bar and on the
@@ -236,11 +245,16 @@ Order and delivery are guaranteed.
 
 ## Releasing
 
-1. Update `CHANGELOG.md` and set the same version in `package.json`.
-2. Commit, then tag and push: `git tag v0.3.0 && git push origin main v0.3.0`.
-3. The Release workflow checks that the tag matches `package.json`, runs the tests, and
+`main` is protected: changes land through pull requests once CI ("Typecheck, test, bundle")
+passes, and nobody can force-push or delete it.
+
+1. On a branch, update `CHANGELOG.md` and set the same version in `package.json`.
+2. Open a pull request and merge it when CI is green (squash or rebase).
+3. Tag the merged commit and push the tag:
+   `git checkout main && git pull && git tag -a v0.3.0 -m "KodaForge 0.3.0" && git push origin v0.3.0`.
+4. The Release workflow checks that the tag matches `package.json`, runs the tests, and
    publishes the GitHub Release with notes from the CHANGELOG, the package tarball, and the
-   package on GitHub Packages. BB users on `^0.x` get the update from `bb plugin update`.
+   package on GitHub Packages. BB users on `^0.x` get it from `bb plugin update kodaforge`.
 
 `monaco/` (the prebuilt editor and icon bundle) is committed, because BB's git installs don't
 run build scripts. CI rebuilds it and fails if the committed icon map is out of date.

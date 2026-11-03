@@ -38,6 +38,8 @@ const workspaceSchema = z.object({
   sublabel: z.string(),
   projectId: z.string(),
   kind: z.enum(["project", "environment"]),
+  /** A git worktree (branch icon) rather than a plain folder. */
+  worktree: z.boolean().optional(),
 });
 export type WorkspaceOption = z.infer<typeof workspaceSchema>;
 
@@ -389,20 +391,50 @@ export default async function plugin(bb: BbPluginApi) {
           });
         }
         const seen = new Set<string>();
+        // "Other" environments are either the project checkout itself (skip: already listed)
+        // or a folder of their own, like a personal thread workspace (list it).
+        const others: { environmentId: string; title: string | null }[] = [];
         for (const thread of "threads" in entry ? entry.threads : []) {
           const environmentId = thread.environmentId;
-          if (environmentId === null || seen.has(environmentId)) continue;
-          if (thread.archivedAt !== null || thread.deletedAt !== null) continue;
-          if (thread.environmentWorkspaceDisplayKind === "other") continue;
+          if (environmentId === null || thread.archivedAt !== null || thread.deletedAt !== null) continue;
+          // Several threads can share a workspace: name it after the first one with a title.
+          const known = others.find((other) => other.environmentId === environmentId);
+          if (known && !known.title?.trim()) known.title = thread.title;
+          if (seen.has(environmentId)) continue;
           seen.add(environmentId);
+          if (thread.environmentWorkspaceDisplayKind === "other") {
+            others.push({ environmentId, title: thread.title });
+            continue;
+          }
           workspaces.push({
             ref: { kind: "environment", id: environmentId },
             label: entry.name,
             sublabel: thread.environmentBranchName ?? thread.environmentName ?? "worktree",
             projectId: entry.id,
             kind: "environment",
+            worktree: true,
           });
         }
+        const checkouts = new Set(entry.sources.map((source) => source.path));
+        const resolved = await Promise.all(
+          others.map(({ environmentId }) => bb.sdk.environments.get({ environmentId }).catch(() => null)),
+        );
+        resolved.forEach((environment, i) => {
+          if (environment === null || environment.path === null || checkouts.has(environment.path)) return;
+          const title = others[i]!.title?.trim();
+          workspaces.push({
+            ref: { kind: "environment", id: others[i]!.environmentId },
+            label: entry.name,
+            sublabel:
+              environment.branchName ??
+              (title ? (title.length > 40 ? `${title.slice(0, 39)}…` : title) : null) ??
+              environment.name ??
+              "workspace",
+            projectId: entry.id,
+            kind: "environment",
+            worktree: environment.branchName !== null,
+          });
+        });
       }
       return { workspaces };
     },
