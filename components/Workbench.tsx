@@ -10,7 +10,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import type * as MonacoApi from "monaco-editor/esm/vs/editor/editor.api.js";
 import { z } from "zod";
-import { defineRpcContract } from "@get-bb/plugin-sdk";
+import type { PluginRpcContract } from "@get-bb/plugin-sdk";
 import type { ResolvedScope, rpcContract, Scope } from "../server";
 import { editorReducer, initialEditorState, openPaths } from "@/lib/editor-state";
 import { Icon } from "@/components/ui/icon";
@@ -37,7 +37,8 @@ type Editor = MonacoApi.editor.IStandaloneCodeEditor;
 type View = "explorer" | "search" | "scm" | "problems";
 type PanelTab = "terminal" | "problems" | "output";
 
-const gitContract = defineRpcContract({
+// A plain object, not defineRpcContract(): the app bundle may only import the SDK's /app entry at runtime.
+const gitContract = {
   status: {
     input: z.object({ keys: z.array(z.string()) }),
     output: z.record(
@@ -48,7 +49,7 @@ const gitContract = defineRpcContract({
       }),
     ),
   },
-});
+} satisfies PluginRpcContract;
 
 const VIEWS: { id: View; icon: string; label: string; keys: string; hue: Hue }[] = [
   { id: "explorer", icon: "FileText", label: "Explorer", keys: "⌘⇧E", hue: "blue" },
