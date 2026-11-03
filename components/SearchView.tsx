@@ -3,8 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract, Scope } from "../server";
 import { Icon } from "@/components/ui/icon";
-import { hueForFile } from "@/lib/file-colors";
-import { useHues } from "./colors";
+import { FileIcon } from "./FileIcon";
 
 type SearchResult = { files: { path: string; sha256: string; matches: Match[] }[]; matchCount: number; searchedFiles: number; truncated: boolean };
 type Match = { offset: number; length: number; line: number; column: number; preview: string; previewStart: number; replacement?: string };
@@ -21,7 +20,6 @@ export function SearchView({
   log(line: string): void;
 }) {
   const rpc = useRpc<typeof rpcContract>();
-  const hues = useHues();
   const [query, setQuery] = useState("");
   const [replacement, setReplacement] = useState("");
   const [replacing, setReplacing] = useState(false);
@@ -241,9 +239,7 @@ export function SearchView({
                     onChange={(event) => toggleFile(file, event.target.checked)}
                   />
                 ) : null}
-                <span className="flex shrink-0" style={{ color: hues[hueForFile(file.path)] }}>
-                  <Icon name="File" className="size-3.5" />
-                </span>
+                <FileIcon path={file.path} className="size-3.5" />
                 <span className="truncate" title={file.path}>
                   {file.path.slice(slash + 1)}
                 </span>

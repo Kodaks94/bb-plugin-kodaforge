@@ -12,6 +12,8 @@ import { formatFile } from "./lib/format.js";
 import { resolveWithinRoot } from "./lib/paths.js";
 import * as gitOps from "./lib/git-ops.js";
 import { runWorkflowCommand } from "./lib/workflows.js";
+import { resolvePythonDebugger } from "./lib/debug-adapter.js";
+import { findBinary } from "./lib/lsp-host.js";
 
 const lsp = new LspHost();
 
@@ -40,6 +42,10 @@ export default experimental_defineHostEntry({
       searchWorkspace(root, { ...options, excludedNames, maxMatches: 5000, timeLimitMs: 15_000, signal: context.signal }),
 
     lspStart: ({ root, language }) => lsp.start(root, language),
+    dapStart: async ({ root }) => {
+      const adapter = await resolvePythonDebugger(root, findBinary);
+      return { ...lsp.startProcess(`dap:python:${root}`, root, adapter), python: adapter.python };
+    },
     lspSend: ({ sessionId, generation, messages }) => {
       lsp.send(sessionId, generation, messages);
       return { ok: true };

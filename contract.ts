@@ -67,6 +67,11 @@ export const hostContract = defineRpcContract({
     input: rootInput.extend({ language: z.enum(["python", "typescript"]) }).strict(),
     output: z.object({ sessionId: z.string(), generation: z.number(), command: z.string() }),
   },
+  /** Start a debug adapter (DAP) session; it is then driven with lspSend/lspReceive. */
+  dapStart: {
+    input: rootInput.extend({ adapter: z.enum(["python"]) }).strict(),
+    output: z.object({ sessionId: z.string(), generation: z.number(), command: z.string(), python: z.string() }),
+  },
   lspSend: {
     input: z.object({ sessionId: z.string(), generation: z.number(), messages: z.array(z.string().max(20_000_000)).max(1000) }).strict(),
     output: z.object({ ok: z.boolean() }),

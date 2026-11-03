@@ -8,8 +8,7 @@ import { ancestorsOf, basename, buildTree, dirname, visibleRows, type TreeNode }
 import { decorateTree, type Decoration } from "@/lib/git-status";
 import { Icon } from "@/components/ui/icon";
 import { InputBox } from "./Palette";
-import { hueForFile } from "@/lib/file-colors";
-import { useHues } from "./colors";
+import { FileIcon } from "./FileIcon";
 
 const ROW_HEIGHT = 22;
 
@@ -55,7 +54,6 @@ export function Explorer({
 }) {
   const rpc = useRpc<typeof rpcContract>();
   const codeTheme = experimental_useCodeTheme();
-  const hues = useHues();
   const [includeHidden, setIncludeHidden] = useState(() => localStorage.getItem("ide:dotfiles") !== "0");
   const [entries, setEntries] = useState<{ path: string; kind: "file" | "directory" }[] | null>(null);
   const [truncated, setTruncated] = useState(false);
@@ -86,7 +84,9 @@ export function Explorer({
     return () => clearTimeout(timer);
   }, [refresh, changeTick]);
 
-  useEffect(() => localStorage.setItem("ide:dotfiles", includeHidden ? "1" : "0"), [includeHidden]);
+  useEffect(() => {
+    localStorage.setItem("ide:dotfiles", includeHidden ? "1" : "0");
+  }, [includeHidden]);
 
   const tree = useMemo(() => buildTree(entries ?? []), [entries]);
   const rows = useMemo(() => visibleRows(tree, expanded), [tree, expanded]);
@@ -295,13 +295,11 @@ export function Explorer({
                 {isDir ? (
                   <>
                     <Icon name={isExpanded ? "ChevronDown" : "ChevronRight"} className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="flex shrink-0" style={{ color: hues.yellow }}>
-                      <Icon name="Folder" className="size-3.5" />
-                    </span>
+                    <FileIcon path={node.path} folder open={isExpanded} />
                   </>
                 ) : (
-                  <span className="ml-3.5 flex shrink-0" style={{ color: hues[hueForFile(node.path)] }}>
-                    <Icon name="File" className="size-3.5" />
+                  <span className="ml-3.5 flex shrink-0">
+                    <FileIcon path={node.path} />
                   </span>
                 )}
                 <span className="flex-1 truncate" style={{ color: colorOf(decoration) }}>

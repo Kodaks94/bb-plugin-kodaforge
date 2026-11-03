@@ -52,3 +52,17 @@ it("rename follows a renamed folder", () => {
   const state = run({ type: "open", path: "src/a/b.ts" }, { type: "rename", from: "src/a", to: "lib" });
   expect(state.groups[0]).toMatchObject({ tabs: ["lib/b.ts"], active: "lib/b.ts" });
 });
+
+it("restores saved groups, dropping empty ones and fixing a missing active tab", () => {
+  const state = editorReducer(initialEditorState, {
+    type: "restore",
+    groups: [{ tabs: ["a", "b"], active: "b" }, { tabs: [], active: null }, { tabs: ["c"], active: "gone" }],
+    focused: 5,
+  });
+  expect(state.groups).toEqual([
+    { id: 0, tabs: ["a", "b"], active: "b" },
+    { id: 1, tabs: ["c"], active: "c" },
+  ]);
+  expect(state.focused).toBe(1);
+  expect(editorReducer(initialEditorState, { type: "restore", groups: [], focused: 0 })).toBe(initialEditorState);
+});

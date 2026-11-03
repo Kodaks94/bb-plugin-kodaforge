@@ -1,5 +1,5 @@
 // ⌘P Quick Open and ⌘⇧P command palette share one list UI.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fuzzyMatch } from "@/lib/tree";
 
 export interface PaletteItem {
@@ -8,6 +8,7 @@ export interface PaletteItem {
   detail?: string;
   /** Text the query matches against; defaults to the label. */
   match?: string;
+  icon?: ReactNode;
   run(): void;
 }
 
@@ -40,7 +41,9 @@ export function Palette({
     return ranked.slice(0, LIMIT).map((entry) => entry.item);
   }, [items, query]);
 
-  useEffect(() => setIndex(0), [query]);
+  useEffect(() => {
+    setIndex(0);
+  }, [query]);
   useEffect(() => {
     listRef.current?.children[index]?.scrollIntoView({ block: "nearest" });
   }, [index]);
@@ -86,6 +89,7 @@ export function Palette({
               onMouseEnter={() => setIndex(i)}
               onClick={() => choose(item)}
             >
+              {item.icon ? <span className="flex self-center">{item.icon}</span> : null}
               <span className="truncate">{item.label}</span>
               {item.detail ? <span className="truncate text-xs text-muted-foreground">{item.detail}</span> : null}
             </li>

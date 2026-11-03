@@ -35,6 +35,25 @@ Click him for a tip. Every animation is off when the system asks for reduced mot
   It also runs any `.bb/workflows/<name>.js` in the workspace with one click. A run reports
   back to the chat thread, which is why a thread must be picked first.
 
+## Run and Debug (⌘⇧D, F5)
+
+Python debugging with debugpy, found in the project's `.venv` or `venv`, or on PATH:
+- Breakpoints: click left of a line number, or press F9. They are saved per workspace.
+- **F5** saves the file and starts it (or continues). **F10**, **F11** and **⇧F11** step over,
+  in and out, **F6** pauses, and **⇧F5** stops.
+- The paused line is highlighted. The Run and Debug view shows variables (expandable, values
+  coloured by type), the call stack (click a frame to jump to it), and breakpoints.
+- The **Debug Console** shows the program's output and evaluates expressions in the selected
+  frame.
+- JS/TS debugging needs vscode-js-debug, which isn't bundled yet.
+
+## File icons
+
+Files and folders use the [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
+(MIT), the most popular VS Code icon theme. Icons are picked the way VS Code picks them
+(`.spec.ts`, `package.json`, `src/`, `components/`…), with light-theme variants.
+`npm run build:monaco` copies them into `monaco/file-icons/`.
+
 ## Colour coding
 
 Every colour comes from BB's current code theme (its terminal ANSI colours), so it follows
@@ -93,9 +112,12 @@ light and dark themes:
   stopped after 10 idle minutes. Its state shows in the status bar; click a failed one to retry.
 
 **Terminal (phase 5)** (Ctrl+\`, or **Terminal** in the status bar)
-- xterm.js on BB's persistent terminals, starting in the workspace root. Terminals survive
-  closing the IDE; reopening it reattaches them, with their scrollback and split layout.
-  Colours follow the theme.
+- xterm.js on BB's persistent terminals, starting in the workspace root. Leaving KodaForge
+  and coming back reattaches the very same terminal: the screen, scrollback, cursor and any
+  full-screen program (vim, htop) are untouched, and output keeps arriving while you're away.
+  After an app restart, the terminals are found again with their last 512 KB of output.
+- Your layout is remembered per workspace: open tabs, the side bar view, the bottom panel and
+  its tab, and minimap.
 - Tabs on the right. **Split** (toolbar, or ⌘\\ inside a terminal) puts up to four terminals
   side by side in one tab, with resizable dividers.
 - The toolbar has new terminal (Ctrl+Shift+\`), split, clear (⌘K), kill, and maximize panel.
@@ -177,6 +199,8 @@ Order and delivery are guaranteed.
 | Library | Use | Licence |
 | --- | --- | --- |
 | monaco-editor 0.52 | Editor, diff editor | MIT |
+| material-icon-theme 5.40 | File and folder icons | MIT |
+| debugpy (yours) | Python debugging | MIT |
 | @xterm/xterm, @xterm/addon-fit | Terminal | MIT |
 | @tanstack/react-virtual | Virtual file tree | MIT |
 | react-resizable-panels | Side bar, groups, panel | MIT |
@@ -291,6 +315,16 @@ The vitest suite covers:
 1. Save a file: Koda hops. Make a type error: he sweats. Leave the IDE idle for 3 minutes: he
    sleeps.
 2. Click Koda: a tip appears.
+
+**Run and Debug**
+1. Open a `.py` file and click left of a line number: a red dot. F9 toggles it too.
+2. Press F5. The program pauses there, the line is highlighted, and Variables shows the locals.
+3. F10 steps, and the values update. Type an expression in the Debug Console: it's evaluated.
+4. Remove the breakpoint and press F5. The program finishes and its output is in the Debug
+   Console.
+
+**Terminal persistence**
+1. Run `top` in a terminal, open another BB page, come back. `top` is still on screen, live.
 
 **Phase 6: source control**
 1. ⌘⇧G in a git workspace. Changed files appear under Changes, coloured.

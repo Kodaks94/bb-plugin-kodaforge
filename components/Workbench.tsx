@@ -30,12 +30,15 @@ import { useHues } from "./colors";
 import { Koda, MOOD_LINES } from "./Koda";
 import { KodaIcon } from "./KodaIcon";
 import { SidePanel, type SideTab } from "./SidePanel";
+import { FileIcon, FileIconProvider } from "./FileIcon";
+import { useDebugger } from "./debugger";
+import { DebugConsole, DebugToolbar, DebugView } from "./DebugView";
 import type { Hue } from "@/lib/file-colors";
 import { remapPath } from "@/lib/editor-state";
 
 type Editor = MonacoApi.editor.IStandaloneCodeEditor;
-type View = "explorer" | "search" | "scm" | "problems";
-type PanelTab = "terminal" | "problems" | "output";
+type View = "explorer" | "search" | "scm" | "debug" | "problems";
+type PanelTab = "terminal" | "debug" | "problems" | "output";
 
 // A plain object, not defineRpcContract(): the app bundle may only import the SDK's /app entry at runtime.
 const gitContract = {
@@ -55,6 +58,7 @@ const VIEWS: { id: View; icon: string; label: string; keys: string; hue: Hue }[]
   { id: "explorer", icon: "FileText", label: "Explorer", keys: "⌘⇧E", hue: "blue" },
   { id: "search", icon: "Search", label: "Search", keys: "⌘⇧F", hue: "yellow" },
   { id: "scm", icon: "GitBranch", label: "Source Control", keys: "⌘⇧G", hue: "orange" },
+  { id: "debug", icon: "Bug", label: "Run and Debug", keys: "⌘⇧D", hue: "red" },
   { id: "problems", icon: "AlertTriangle", label: "Problems", keys: "", hue: "red" },
 ];
 
@@ -66,8 +70,14 @@ const CHROME_CSS = `
 .kf-root *::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted-foreground) 30%, transparent); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 .kf-root *::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--muted-foreground) 55%, transparent); }
 .kf-root *::-webkit-scrollbar-track { background: transparent; }
+.kf-root .kf-bp::before { content: ""; display: block; width: 9px; height: 9px; margin: 5px 0 0 5px; border-radius: 50%; background: var(--kf-red); }
+.kf-root .kf-stop-glyph::before { content: ""; display: block; width: 10px; height: 12px; margin: 4px 0 0 4px; background: var(--kf-yellow); clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.kf-root .kf-stop-line { background: color-mix(in srgb, var(--kf-yellow) 22%, transparent); }
 .kf-root button:focus-visible, .kf-root [role="treeitem"]:focus-visible, .kf-root [role="tab"]:focus-visible { outline: 1.5px solid var(--primary); outline-offset: -1.5px; }
 `;
+
+/** The workbench the user touched last; it owns shortcuts that land on the bare page body. */
+let lastActiveWorkbench: symbol | null = null;
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -75,6 +85,7 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
   const rpc = useRpc<typeof rpcContract>();
   const [resolved, setResolved] = useState<ResolvedScope | null>(null);
   const [monaco, setMonaco] = useState<Monaco | null>(null);
+  const [assetsUrl, setAssetsUrl] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   const [output, setOutput] = useState<string[]>([]);
   // Koda celebrates the good news in the log: saves, commits, replacements.
@@ -88,7 +99,10 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
     let cancelled = false;
     setResolved(null);
     setFatal(null);
-    Promise.all([rpc.call("resolve", { scope }), rpc.call("monacoAssets", null).then((a) => loadMonaco(a.baseUrl))]).then(
+    Promise.all([rpc.call("resolve", { scope }), rpc.call("monacoAssets", null).then((a) => {
+        setAssetsUrl(a.baseUrl);
+        return loadMonaco(a.baseUrl);
+      })]).then(
       ([info, api]) => {
         if (cancelled) return;
         setResolved(info);
@@ -117,8 +131,28 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
   }, [monaco, codeTheme.theme, codeTheme.mode]);
 
   const docs = useDocuments(monaco, scope, resolved?.root ?? null, log);
+
+  // Layout survives leaving KodaForge: views, panel, and open tabs, per workspace.
+  const layoutKey = `kodaforge:layout:${scope.kind}:${scope.id}`;
+  const savedLayout = useRef<{
+    view?: View | null;
+    panel?: PanelTab | null;
+    panelMax?: boolean;
+    minimap?: boolean;
+    groups?: { tabs: string[]; active: string | null }[];
+    focused?: number;
+  }>(
+    (() => {
+      try {
+        return JSON.parse(localStorage.getItem(layoutKey) ?? "{}");
+      } catch {
+        return {};
+      }
+    })(),
+  ).current;
   const [state, dispatch] = useReducer(editorReducer, initialEditorState);
   const lsp = useLanguageServers(monaco, docs, scope, resolved?.root ?? null, log);
+  const debug = useDebugger(scope, resolved?.root ?? null, log);
 
   /** ⌘S: format with ruff/prettier when available, then the hash-guarded save. */
   const save = useCallback(
@@ -144,10 +178,10 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
     },
     [docs, rpc, scope, log],
   );
-  const [view, setView] = useState<View | null>("explorer");
-  const [panel, setPanel] = useState<PanelTab | null>(null);
-  const [minimap, setMinimap] = useState(true);
-  const [panelMax, setPanelMax] = useState(false);
+  const [view, setView] = useState<View | null>(savedLayout.view === undefined ? "explorer" : savedLayout.view);
+  const [panel, setPanel] = useState<PanelTab | null>(savedLayout.panel ?? null);
+  const [minimap, setMinimap] = useState(savedLayout.minimap ?? true);
+  const [panelMax, setPanelMax] = useState(savedLayout.panelMax ?? false);
   const terminalRef = useRef<TerminalApi | null>(null);
   /** Open the terminal panel and hand back its API once it has mounted. */
   const terminalApi = useCallback(async (): Promise<TerminalApi | null> => {
@@ -269,6 +303,45 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
     [docs.paths, docs.isDirty, log],
   );
 
+  // Reopen the saved tabs once the editor is ready; files that are gone are skipped.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || monaco === null || resolved === null) return;
+    restored.current = true;
+    const groups = savedLayout.groups ?? [];
+    void (async () => {
+      const kept = [];
+      for (const group of groups) {
+        const tabs: string[] = [];
+        for (const path of group.tabs) {
+          if (path.startsWith("diff:")) tabs.push(path);
+          else if (await docs.open(path).catch(() => false)) tabs.push(path);
+        }
+        kept.push({ tabs, active: group.active });
+      }
+      // Track the reopened files only now, together with the tabs that show them,
+      // so the unused-model cleanup never sees one without the other.
+      for (const group of kept) for (const path of group.tabs) if (!path.startsWith("diff:")) trackedPaths.current.add(path);
+      dispatch({ type: "restore", groups: kept, focused: savedLayout.focused ?? 0 });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monaco, resolved]);
+
+  useEffect(() => {
+    if (!restored.current) return;
+    localStorage.setItem(
+      layoutKey,
+      JSON.stringify({
+        view,
+        panel,
+        panelMax,
+        minimap,
+        groups: state.groups.map((group) => ({ tabs: group.tabs, active: group.active })),
+        focused: state.focused,
+      }),
+    );
+  }, [layoutKey, view, panel, panelMax, minimap, state]);
+
   const focusedGroup = state.groups[state.focused];
   const activePath = focusedGroup?.active ?? null;
   const activeModel = activePath === null ? null : docs.model(activePath);
@@ -325,6 +398,7 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
           label: path.slice(slash + 1),
           detail: slash === -1 ? "" : path.slice(0, slash),
           match: path,
+          icon: <FileIcon path={path} />,
           run: () => void openFile(path),
         };
       }),
@@ -345,6 +419,13 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
       { id: "search", label: "Search: Find in Files", run: () => setView("search") },
       { id: "scm", label: "View: Show Source Control", run: () => setView("scm") },
       { id: "branch", label: "Git: Switch Branch…", run: () => setPalette("branches") },
+      { id: "debugStart", label: "Debug: Start Debugging", run: () => (setView("debug"), activePath?.endsWith(".py") && void startDebugging(activePath)) },
+      { id: "debugStop", label: "Debug: Stop", run: () => void debug.stop() },
+      { id: "debugBp", label: "Debug: Toggle Breakpoint", run: () => {
+        const line = editors.current.get(state.focused)?.getPosition()?.lineNumber;
+        if (activePath && line) debug.toggleBreakpoint(activePath, line);
+      } },
+      { id: "debugConsole", label: "View: Show Debug Console", run: () => setPanel("debug") },
       { id: "chat", label: "Chat: Open Chat", run: () => openSide("chat") },
       { id: "newChat", label: "Chat: New Chat", run: () => (setChatThreadId(null), openSide("chat")) },
       { id: "threads", label: "Chat: Show Threads", run: () => openSide("threads") },
@@ -379,12 +460,48 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
 
   // Shortcuts are scoped to this workbench, so it takes focus when it opens.
   const rootRef = useRef<HTMLDivElement>(null);
+  const identity = useRef(Symbol("workbench")).current;
+  // When focus falls back to <body> (a clicked button disappeared), keys would
+  // reach BB instead; route them here if this workbench was used last.
+  const keyHandler = useRef<(event: React.KeyboardEvent) => void>(() => undefined);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (lastActiveWorkbench !== identity || !rootRef.current?.isConnected) return;
+      if (event.target !== document.body && event.target !== document.documentElement) return;
+      keyHandler.current(event as unknown as React.KeyboardEvent);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      if (lastActiveWorkbench === identity) lastActiveWorkbench = null;
+    };
+  }, [identity]);
   const ready = resolved !== null && monaco !== null;
   useEffect(() => {
     if (ready) rootRef.current?.focus();
   }, [ready]);
 
   const onKeyDownCapture = (event: React.KeyboardEvent) => {
+    // Debugging keys, as in VS Code.
+    if (/^F(5|6|9|10|11)$/.test(event.key) && !event.altKey && !event.ctrlKey) {
+      const k = event.key;
+      if (k === "F5" && event.shiftKey && event.metaKey) void debug.restart();
+      else if (k === "F5" && event.shiftKey) void debug.stop();
+      else if (k === "F5" && debug.status === "stopped") void debug.step("continue");
+      else if (k === "F5" && !debug.active) {
+        setView("debug");
+        if (activePath?.endsWith(".py")) void startDebugging(activePath);
+      } else if (k === "F6" && debug.status === "running") void debug.step("pause");
+      else if (k === "F9" && activePath !== null && !activePath.startsWith("diff:")) {
+        const line = editors.current.get(state.focused)?.getPosition()?.lineNumber;
+        if (line) debug.toggleBreakpoint(activePath, line);
+      } else if (k === "F10" && debug.status === "stopped") void debug.step("next");
+      else if (k === "F11" && debug.status === "stopped") void debug.step(event.shiftKey ? "stepOut" : "stepIn");
+      else return;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.ctrlKey && !event.metaKey && (event.key === "`" || event.key === "~")) {
       if (event.shiftKey) void terminalApi().then((api) => api?.newTerminal());
       else setPanel((p) => (p === "terminal" ? null : "terminal"));
@@ -406,6 +523,7 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
     else if (key === "f" && event.shiftKey) setView("search");
     else if (key === "g" && event.shiftKey) setView("scm");
     else if (key === "e" && event.shiftKey) setView("explorer");
+    else if (key === "d" && event.shiftKey) setView("debug");
     else if (key === "p") setPalette("files");
     else if (key === "s" && !event.shiftKey) activePath && void save(activePath);
     else if (key === "\\") {
@@ -421,6 +539,8 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
       event.stopPropagation();
     }
   };
+
+  keyHandler.current = onKeyDownCapture;
 
   const git = experimental_useRpcKeyedQuery({
     pluginId: "bb--git",
@@ -479,7 +599,9 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
     },
     [sideKey],
   );
-  useEffect(() => localStorage.setItem(`${sideKey}:open`, sideOpen ? "1" : "0"), [sideKey, sideOpen]);
+  useEffect(() => {
+    localStorage.setItem(`${sideKey}:open`, sideOpen ? "1" : "0");
+  }, [sideKey, sideOpen]);
   const openSide = (tab: SideTab) => {
     setSideTab(tab);
     setSideOpen(true);
@@ -512,10 +634,53 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
     const timer = setTimeout(() => setNow(Date.now()), 1700);
     return () => clearTimeout(timer);
   }, [celebrating]);
+  // Debugging: save the file first, open the Debug Console, then launch.
+  async function startDebugging(path: string, args = "") {
+    if (docs.isDirty(path)) await save(path);
+    setPanel("debug");
+    await debug.start(path, args);
+  }
+
+  // Breakpoint dots and the paused line, drawn into every open model.
+  const decorations = useRef(new Map<string, string[]>());
+  const stoppedAt = debug.status === "stopped" ? (debug.frame ?? debug.frames[0] ?? null) : null;
+  useEffect(() => {
+    if (monaco === null) return;
+    for (const path of docs.paths()) {
+      const model = docs.model(path);
+      if (model === null) continue;
+      const lines = debug.breakpoints[path] ?? [];
+      const next = [
+        ...lines.map((line) => ({
+          range: new monaco.Range(line, 1, line, 1),
+          options: { glyphMarginClassName: "kf-bp", glyphMarginHoverMessage: { value: "Breakpoint (click or F9 to remove)" }, stickiness: 1 },
+        })),
+        ...(stoppedAt?.path === path
+          ? [
+              {
+                range: new monaco.Range(stoppedAt.line, 1, stoppedAt.line, 1),
+                options: { isWholeLine: true, className: "kf-stop-line", glyphMarginClassName: "kf-stop-glyph" },
+              },
+            ]
+          : []),
+      ];
+      decorations.current.set(path, model.deltaDecorations(decorations.current.get(path) ?? [], next));
+    }
+  });
+  // When the program pauses, bring its line on screen.
+  useEffect(() => {
+    if (stoppedAt?.path) void openAt(stoppedAt.path, stoppedAt.line, 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stoppedAt?.path, stoppedAt?.line, stoppedAt?.id]);
+
   const mood = moodFor({
-    conflict: open.some((path) => docs.meta(path)?.conflict),
+    conflict: open.some((path) => docs.meta(path)?.conflict) || debug.stopped?.reason === "exception",
     errors,
-    busy: Object.values(lsp.states).some((s) => s?.status === "starting") || open.some((path) => docs.meta(path)?.saving),
+    busy:
+      Object.values(lsp.states).some((s) => s?.status === "starting") ||
+      open.some((path) => docs.meta(path)?.saving) ||
+      debug.status === "running" ||
+      debug.status === "starting",
     celebrating: celebrating > 0 && Date.now() - celebrating < 1600,
     idleMs: now - lastActivity,
   });
@@ -528,15 +693,21 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
   }
 
   return (
+    <FileIconProvider baseUrl={assetsUrl}>
     <div
       ref={rootRef}
       tabIndex={-1}
       className="kf-root relative flex h-full min-h-0 flex-col bg-background text-foreground outline-none"
+      style={{ "--kf-red": hues.red, "--kf-yellow": hues.yellow } as React.CSSProperties}
       onKeyDownCapture={(event) => {
         setLastActivity(Date.now());
+        lastActiveWorkbench = identity;
         onKeyDownCapture(event);
       }}
-      onPointerDown={() => setLastActivity(Date.now())}
+      onPointerDown={() => {
+        setLastActivity(Date.now());
+        lastActiveWorkbench = identity;
+      }}
     >
       <style>{CHROME_CSS}</style>
       <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/30 pl-3 pr-1.5">
@@ -554,6 +725,7 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
             </span>
           )}
         </div>
+        <DebugToolbar debug={debug} />
         <LayoutButton icon="PanelLeft" label="Toggle Side Bar (⌘B)" active={view !== null} onClick={() => setView((v) => (v === null ? "explorer" : null))} />
         <LayoutButton icon="Terminal" label="Toggle Panel (⌘J)" active={panel !== null} onClick={() => setPanel((p) => (p === null ? "terminal" : null))} />
         <LayoutButton icon="MessageSquare" label="Toggle Chat (⌘⌥B)" active={sideOpen} onClick={() => setSideOpen((value) => !value)} />
@@ -623,6 +795,14 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
                       log={log}
                     />
                   }
+                  debugView={
+                    <DebugView
+                      debug={debug}
+                      activePath={activePath}
+                      onOpenAt={(path, line, column) => void openAt(path, line, column)}
+                      onStart={(path, args) => void startDebugging(path, args)}
+                    />
+                  }
                   search={<SearchView scope={scope} onOpenAt={(path, line, column, length) => void openAt(path, line, column, length)} log={log} />}
                   scm={
                     <SourceControlView
@@ -672,6 +852,7 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
                         onEditor={onEditor}
                         onCursor={setCursor}
                         requestClose={requestClose}
+                        onGutterClick={(path, line) => debug.toggleBreakpoint(path, line)}
                         welcome={index === 0 ? <Welcome mood={mood} onChat={() => openSide("chat")} /> : undefined}
                       />
                     </GroupSlot>
@@ -688,6 +869,7 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
                       output={output}
                       markers={markers}
                       onReveal={(m) => revealMarker(m)}
+                      debugConsole={<DebugConsole debug={debug} />}
                       terminal={
                         <TerminalPanel
                           ref={terminalRef}
@@ -798,6 +980,7 @@ export function Workbench({ scope, header }: { scope: Scope; header?: ReactNode 
       ) : null}
       {palette === "commands" ? <Palette placeholder="Type a command" items={commands} onClose={() => setPalette(null)} /> : null}
     </div>
+    </FileIconProvider>
   );
 
   function revealMarker(marker: MonacoApi.editor.IMarker) {
@@ -831,6 +1014,7 @@ function useRealtimeChanges(root: string | null, onChange: () => void) {
 }
 
 function SideBar({
+  debugView,
   explorer,
   search,
   scm,
@@ -842,6 +1026,7 @@ function SideBar({
   markers,
   onReveal,
 }: {
+  debugView: ReactNode;
   explorer: ReactNode;
   search: ReactNode;
   scm: ReactNode;
@@ -865,8 +1050,9 @@ function SideBar({
               {openEditors.map((path) => (
                 <li key={path}>
                   <button type="button" title={path} className="flex w-full items-center gap-1 truncate px-3 py-0.5 text-left hover:bg-muted" onClick={() => onOpen(path)}>
-                    {isDirty(path) ? <span className="size-1.5 shrink-0 rounded-full bg-foreground" /> : null}
+                    <FileIcon path={path} className="size-3.5" />
                     <span className="truncate">{path.split("/").pop()}</span>
+                    {isDirty(path) ? <span className="size-1.5 shrink-0 rounded-full bg-foreground" /> : null}
                     <span className="truncate text-xs text-muted-foreground">{path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""}</span>
                   </button>
                 </li>
@@ -876,6 +1062,8 @@ function SideBar({
           </div>
         ) : view === "search" ? (
           search
+        ) : view === "debug" ? (
+          debugView
         ) : view === "scm" ? (
           scm
         ) : view === "problems" ? (
@@ -906,6 +1094,7 @@ function ProblemList({ markers, onReveal }: { markers: MonacoApi.editor.IMarker[
 }
 
 function BottomPanel({
+  debugConsole,
   terminal,
   tab,
   setTab,
@@ -913,6 +1102,7 @@ function BottomPanel({
   markers,
   onReveal,
 }: {
+  debugConsole: ReactNode;
   terminal: ReactNode;
   tab: PanelTab;
   setTab(tab: PanelTab | null): void;
@@ -921,11 +1111,15 @@ function BottomPanel({
   onReveal(marker: MonacoApi.editor.IMarker): void;
 }) {
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [output.length, tab]);
+  // Block body on purpose: Chromium's scrollIntoView now returns a Promise, and an
+  // effect must return nothing or a cleanup function.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [output.length, tab]);
   return (
     <div className="flex h-full flex-col">
       <div role="tablist" aria-label="Panel" className="flex h-8 shrink-0 items-center gap-4 px-3 text-[11px] uppercase">
-        {(["terminal", "problems", "output"] as const).map((id) => (
+        {(["terminal", "debug", "problems", "output"] as const).map((id) => (
           <button
             key={id}
             role="tab"
@@ -934,7 +1128,7 @@ function BottomPanel({
             className={tab === id ? "border-b border-foreground text-foreground" : "text-muted-foreground hover:text-foreground"}
             onClick={() => setTab(id)}
           >
-            {id}
+            {id === "debug" ? "debug console" : id}
           </button>
         ))}
         <span className="flex-1" />
@@ -943,7 +1137,8 @@ function BottomPanel({
         </button>
       </div>
       <div className={`min-h-0 flex-1 ${tab === "terminal" ? "" : "hidden"}`}>{terminal}</div>
-      <div className={`min-h-0 flex-1 overflow-y-auto px-3 pb-2 font-mono text-xs ${tab === "terminal" ? "hidden" : ""}`}>
+      <div className={`min-h-0 flex-1 ${tab === "debug" ? "" : "hidden"}`}>{debugConsole}</div>
+      <div className={`min-h-0 flex-1 overflow-y-auto px-3 pb-2 font-mono text-xs ${tab === "terminal" || tab === "debug" ? "hidden" : ""}`}>
         {tab === "output" ? (
           <>
             {output.map((line, i) => (

@@ -69,7 +69,6 @@ export function withInitializationOptions(message: string, extra: Record<string,
 interface Session {
   id: string;
   root: string;
-  language: LspLanguage;
   generation: number;
   child: ChildProcessWithoutNullStreams;
   outbox: { seq: number; data: string }[];
@@ -95,15 +94,19 @@ export class LspHost {
 
   /** Start (or restart, for a new client) the server for this root and language. */
   async start(root: string, language: LspLanguage): Promise<{ sessionId: string; generation: number; command: string }> {
-    const server = await resolveServer(root, language, this.find);
-    const id = `${language}:${root}`;
-    // One client per server: a new IDE view takes the session over (a server cannot be initialized twice).
+    return this.startProcess(`${language}:${root}`, root, await resolveServer(root, language, this.find));
+  }
+
+  /**
+   * Run any stdio JSON-RPC process with LSP framing (language servers, debug
+   * adapters) as a session. One per id: a new client takes the session over.
+   */
+  startProcess(id: string, root: string, server: ServerCommand): { sessionId: string; generation: number; command: string } {
     this.stop(id, "taken over by another IDE view");
     const child = this.spawnServer(server.command, server.args, root);
     const session: Session = {
       id,
       root,
-      language,
       generation: ++this.generations,
       child,
       outbox: [],

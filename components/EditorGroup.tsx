@@ -7,7 +7,7 @@ import type { Documents } from "./use-documents";
 import type { Monaco } from "./monaco";
 import { DiffView } from "./DiffView";
 import { parseDiffKey } from "@/lib/diff-key";
-import { hueForFile } from "@/lib/file-colors";
+import { FileIcon } from "./FileIcon";
 import { useHues } from "./colors";
 import type { Scope } from "../server";
 
@@ -25,6 +25,7 @@ export function EditorGroup({
   onEditor,
   onCursor,
   requestClose,
+  onGutterClick,
   welcome,
 }: {
   monaco: Monaco;
@@ -38,14 +39,16 @@ export function EditorGroup({
   onEditor(index: number, editor: Editor | null): void;
   onCursor(position: { line: number; column: number } | null): void;
   requestClose(path: string, group: number): void;
+  /** A click in the glyph margin: toggles a breakpoint. */
+  onGutterClick?(path: string, line: number): void;
   /** Shown in an empty group: KodaForge's welcome. */
   welcome?: React.ReactNode;
 }) {
   const hues = useHues();
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<Editor | null>(null);
-  const latest = useRef({ index, dispatch, onCursor, focused });
-  latest.current = { index, dispatch, onCursor, focused };
+  const latest = useRef({ index, dispatch, onCursor, focused, onGutterClick, active: group.active });
+  latest.current = { index, dispatch, onCursor, focused, onGutterClick, active: group.active };
 
   useEffect(() => {
     const instance = monaco.editor.create(host.current!, {
@@ -56,6 +59,7 @@ export function EditorGroup({
       scrollBeyondLastLine: false,
       renderWhitespace: "selection",
       fixedOverflowWidgets: true,
+      glyphMargin: true,
     });
     editor.current = instance;
     const report = () => {
@@ -69,6 +73,13 @@ export function EditorGroup({
       }),
       instance.onDidChangeCursorPosition(() => {
         if (latest.current.focused) report();
+      }),
+      instance.onMouseDown((event) => {
+        const { active, onGutterClick } = latest.current;
+        const line = event.target.position?.lineNumber;
+        if (event.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN && line && active && !active.startsWith("diff:")) {
+          onGutterClick?.(active, line);
+        }
       }),
     ];
     onEditor(index, instance);
@@ -128,9 +139,13 @@ export function EditorGroup({
               onAuxClick={(event) => event.button === 1 && requestClose(path, index)}
               onKeyDown={(event) => event.key === "Enter" && dispatch({ type: "activate", path, group: index })}
             >
-              <span className="flex" style={{ color: hues[hueForFile(tabDiff?.path ?? path)] }}>
-                <Icon name={tabDiff ? "GitBranch" : "File"} className="size-3.5" />
-              </span>
+              {tabDiff ? (
+                <span className="flex" style={{ color: hues.orange }}>
+                  <Icon name="GitBranch" className="size-3.5" />
+                </span>
+              ) : (
+                <FileIcon path={path} className="size-3.5" />
+              )}
               <span className={docs.meta(path)?.conflict ? "text-destructive" : ""}>{name}</span>
               <button
                 type="button"

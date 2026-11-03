@@ -7,6 +7,7 @@ import { decorationOf, type GitEntry } from "@/lib/git-status";
 import type { DiffSide } from "@/lib/diff-key";
 import { Icon } from "@/components/ui/icon";
 import { InputBox } from "./Palette";
+import { FileIcon } from "./FileIcon";
 
 const COLOR_KEY: Record<string, [string, string]> = {
   modified: ["gitDecoration.modifiedResourceForeground", "#e2c08d"],
@@ -147,9 +148,10 @@ export function SourceControlView({
         <button
           type="button"
           title={entry.origPath ? `${entry.origPath} → ${entry.path}` : entry.path}
-          className={`flex min-w-0 flex-1 items-baseline gap-1.5 text-left ${deleted ? "line-through" : ""}`}
+          className={`flex min-w-0 flex-1 items-center gap-1.5 text-left ${deleted ? "line-through" : ""}`}
           onClick={() => (entry.worktree === "?" && side === "working" ? onOpenFile(entry.path) : onOpenDiff(entry.path, side))}
         >
+          <FileIcon path={entry.path} className="size-3.5" />
           <span className="truncate" style={{ color: color(entry) }}>
             {entry.path.slice(slash + 1)}
           </span>

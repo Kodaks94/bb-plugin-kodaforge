@@ -140,7 +140,7 @@ export const rpcContract = defineRpcContract({
   /** Where the app opens the language-server WebSocket, and the plugin token it needs. */
   lspEndpoint: {
     input: z.null(),
-    output: z.object({ path: z.string(), token: z.string() }),
+    output: z.object({ path: z.string(), dapPath: z.string(), token: z.string() }),
   },
   format: {
     input: z.object({ scope: scopeSchema, path: relPath, content: z.string().max(4 * 1024 * 1024) }).strict(),
@@ -319,48 +319,60 @@ export default async function plugin(bb: BbPluginApi) {
     return found;
   }
 
-  // Language servers: browser WebSocket <-> this bridge <-> host session (see lib/lsp-bridge.ts).
-  // The route requires the plugin token; BB serves it on its own (local) listener.
-  bb.http.experimental_websocket(
-    "/lsp",
-    ({ url }) => {
-      const parsed = z
-        .object({ kind: scopeSchema.shape.kind, id: z.string().min(1).max(200), language: z.enum(["python", "typescript"]) })
-        .safeParse(Object.fromEntries(url.searchParams));
-      let bridge: ReturnType<typeof createBridge> | null = null;
-      return {
-        onOpen(socket) {
-          if (!parsed.success) return socket.close(1008, "bad request");
-          const { kind, id, language } = parsed.data;
-          const opened = target({ kind, id });
-          bridge = createBridge(
-            socket,
-            {
-              start: async () => {
-                const resolved = await opened;
-                const started = await host.call("lspStart", { root: resolved.root, language }, { hostId: resolved.hostId });
-                bb.log.info(`lsp ${language} started (${started.command}) for ${resolved.root}`);
-                return started;
+  // Language servers and debug adapters: browser WebSocket <-> this bridge <-> host
+  // session (see lib/lsp-bridge.ts). Routes require the plugin token; BB serves them
+  // on its own listener.
+  function bridgeRoute(
+    route: string,
+    kindSchema: z.ZodType<string>,
+    start: (resolved: ResolvedScope, kind: string) => Promise<{ sessionId: string; generation: number; command: string }>,
+  ) {
+    bb.http.experimental_websocket(
+      route,
+      ({ url }) => {
+        const parsed = z
+          .object({ kind: scopeSchema.shape.kind, id: z.string().min(1).max(200), language: kindSchema })
+          .safeParse(Object.fromEntries(url.searchParams));
+        let bridge: ReturnType<typeof createBridge> | null = null;
+        return {
+          onOpen(socket) {
+            if (!parsed.success) return socket.close(1008, "bad request");
+            const { kind, id, language } = parsed.data;
+            const opened = resolveScope({ kind, id });
+            bridge = createBridge(
+              socket,
+              {
+                start: async () => {
+                  const resolved = await opened;
+                  const started = await start(resolved, language);
+                  bb.log.info(`${route.slice(1)} ${language} started (${started.command}) for ${resolved.root}`);
+                  return started;
+                },
+                send: async (sessionId, generation, messages) => {
+                  await host.call("lspSend", { sessionId, generation, messages }, { hostId: (await opened).hostId });
+                },
+                receive: async (sessionId, generation, after) =>
+                  host.call("lspReceive", { sessionId, generation, after, waitMs: 20_000 }, { hostId: (await opened).hostId }),
               },
-              send: async (sessionId, generation, messages) => {
-                await host.call("lspSend", { sessionId, generation, messages }, { hostId: (await opened).hostId });
-              },
-              receive: async (sessionId, generation, after) =>
-                host.call("lspReceive", { sessionId, generation, after, waitMs: 20_000 }, { hostId: (await opened).hostId }),
-            },
-            (line) => bb.log.info(line),
-          );
-        },
-        onMessage(_socket, data) {
-          bridge?.onMessage(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
-        },
-        onClose() {
-          bridge?.close();
-        },
-      };
-    },
-    { auth: "token" },
+              (line) => bb.log.info(line),
+            );
+          },
+          onMessage(_socket, data) {
+            bridge?.onMessage(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
+          },
+          onClose() {
+            bridge?.close();
+          },
+        };
+      },
+      { auth: "token" },
+    );
+  }
+
+  bridgeRoute("/lsp", z.enum(["python", "typescript"]), (resolved, language) =>
+    host.call("lspStart", { root: resolved.root, language: language as "python" | "typescript" }, { hostId: resolved.hostId }),
   );
+  bridgeRoute("/dap", z.enum(["python"]), (resolved) => host.call("dapStart", { root: resolved.root, adapter: "python" }, { hostId: resolved.hostId }));
 
   bb.rpc.register(rpcContract, {
     async workspaces() {
@@ -512,7 +524,8 @@ export default async function plugin(bb: BbPluginApi) {
 
     async lspEndpoint() {
       const { token } = await bb.sdk.plugins.token({ pluginId: bb.pluginId });
-      return { path: `/api/v1/plugins/${encodeURIComponent(bb.pluginId)}/http/lsp`, token };
+      const base = `/api/v1/plugins/${encodeURIComponent(bb.pluginId)}/http`;
+      return { path: `${base}/lsp`, dapPath: `${base}/dap`, token };
     },
 
     async format({ scope, path: relativePath, content }) {

@@ -25,7 +25,8 @@ export type EditorAction =
   | { type: "activate"; path: string; group: number }
   | { type: "focus"; group: number }
   | { type: "split" }
-  | { type: "rename"; from: string; to: string };
+  | { type: "rename"; from: string; to: string }
+  | { type: "restore"; groups: { tabs: string[]; active: string | null }[]; focused: number };
 
 export const initialEditorState: EditorState = {
   groups: [{ id: 0, tabs: [], active: null }],
@@ -71,6 +72,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const current = state.groups[state.focused];
       if (current?.active == null) return state;
       return editorReducer(state, { type: "open", path: current.active, toSide: true });
+    }
+    case "restore": {
+      // Saved tabs come back minus any that could not be reopened (already filtered).
+      const groups = action.groups
+        .filter((group) => group.tabs.length > 0)
+        .slice(0, MAX_GROUPS)
+        .map((group, id) => ({ id, tabs: group.tabs, active: group.active !== null && group.tabs.includes(group.active) ? group.active : group.tabs[0]! }));
+      if (groups.length === 0) return state;
+      return { groups, focused: Math.min(Math.max(action.focused, 0), groups.length - 1), nextId: groups.length };
     }
     case "rename": {
       const map = (path: string) => remapPath(path, action.from, action.to) ?? path;

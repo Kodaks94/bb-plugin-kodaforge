@@ -45,7 +45,6 @@ export const TerminalPanel = forwardRef<
   const sdk = useSdk();
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [layout, setLayout] = useState<TerminalLayout>(emptyLayout);
-  const xterms = useRef(new Map<string, Terminal>());
   const exitWaiters = useRef(new Map<string, (code: number | null) => void>());
   const storageKey = `kodaforge:terminals:${workspace.hostId}:${workspace.root}`;
   const hues = useHues();
@@ -118,6 +117,7 @@ export const TerminalPanel = forwardRef<
     async (id: string) => {
       setSessions((current) => (current ?? []).filter((s) => s.id !== id));
       setLayout((current) => removeTerminal(current, id));
+      forgetTerminal(id);
       await sdk.terminals.close({ terminalId: id, mode: "force" }).catch(() => undefined);
     },
     [sdk],
@@ -129,7 +129,7 @@ export const TerminalPanel = forwardRef<
       newTerminal: () => void create(false),
       split: () => void create(true),
       clear: () => {
-        if (layout.focused) xterms.current.get(layout.focused)?.clear();
+        if (layout.focused) liveTerminal(layout.focused)?.clear();
       },
       run: async (argv, title) => {
         const id = await create(false, { argv, title });
@@ -162,8 +162,6 @@ export const TerminalPanel = forwardRef<
               key={session.id}
               hidden
               terminalId={session.id}
-              keepOnExit={session.command}
-              registry={xterms.current}
               onFocus={() => undefined}
               onExit={(code) => onExited(session, code)}
             />
@@ -179,8 +177,6 @@ export const TerminalPanel = forwardRef<
                   <XtermView
                     terminalId={id}
                     hidden={!visible}
-                    keepOnExit={session.command}
-                    registry={xterms.current}
                     focus={visible && layout.focused === id}
                     onFocus={() => setLayout((current) => focusTerminal(current, id))}
                     onExit={(code) => onExited(session, code)}
@@ -200,7 +196,7 @@ export const TerminalPanel = forwardRef<
             disabled={shown.length >= MAX_SPLITS || layout.focused === null}
             onClick={() => void create(true)}
           />
-          <ToolButton icon="Edit" label="Clear Terminal (⌘K)" disabled={layout.focused === null} onClick={() => layout.focused && xterms.current.get(layout.focused)?.clear()} />
+          <ToolButton icon="Edit" label="Clear Terminal (⌘K)" disabled={layout.focused === null} onClick={() => layout.focused && liveTerminal(layout.focused)?.clear()} />
           <ToolButton icon="Trash2" label="Kill Terminal" disabled={layout.focused === null} onClick={() => layout.focused && void kill(layout.focused)} />
           <span className="flex-1" />
           <ToolButton icon={maximized ? "Minimize2" : "Maximize2"} label={maximized ? "Restore Panel Size" : "Maximize Panel"} onClick={onToggleMaximize} />
@@ -254,6 +250,7 @@ export const TerminalPanel = forwardRef<
     if (!session.command) {
       setSessions((current) => (current ?? []).filter((s) => s.id !== session.id));
       setLayout((current) => removeTerminal(current, session.id));
+      forgetTerminal(session.id);
     }
   }
 });
@@ -284,121 +281,184 @@ function ToolButton({ icon, label, onClick, disabled }: { icon: string; label: s
   );
 }
 
+/**
+ * Live terminals outlive the panel: leaving KodaForge detaches the xterm element
+ * and keeps polling (slowly) in the background; coming back reattaches the very
+ * same terminal, so the screen, scrollback and full-screen apps stay intact.
+ */
+interface LiveTerminal {
+  terminal: Terminal;
+  fit: FitAddon;
+  holder: HTMLDivElement;
+  visible: boolean;
+  exited: { code: number | null } | null;
+  onExit: ((code: number | null) => void) | null;
+  onFocus: (() => void) | null;
+  dispose(): void;
+}
+
+const live = new Map<string, LiveTerminal>();
+
+/** Drop terminals that are gone (killed elsewhere, or exited and dismissed). */
+export function forgetTerminal(id: string): void {
+  live.get(id)?.dispose();
+  live.delete(id);
+}
+
+export function liveTerminal(id: string): Terminal | null {
+  return live.get(id)?.terminal ?? null;
+}
+
+function attachTerminal(sdk: ReturnType<typeof useSdk>, terminalId: string): LiveTerminal {
+  const existing = live.get(terminalId);
+  if (existing !== undefined) return existing;
+
+  const holder = document.createElement("div");
+  holder.style.cssText = "position:absolute;inset:0;padding:4px 8px 0 8px";
+  const terminal = new Terminal({
+    fontSize: 12,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    cursorBlink: true,
+    scrollback: 10000,
+  });
+  const fit = new FitAddon();
+  terminal.loadAddon(fit);
+  terminal.open(holder);
+  // ⌘K clears, as in VS Code; everything else goes to the shell.
+  terminal.attachCustomKeyEventHandler((event) => {
+    if (event.type === "keydown" && event.metaKey && event.key.toLowerCase() === "k") {
+      terminal.clear();
+      return false;
+    }
+    return true;
+  });
+  const entry: LiveTerminal = {
+    terminal,
+    fit,
+    holder,
+    visible: false,
+    exited: null,
+    onExit: null,
+    onFocus: null,
+    dispose: () => undefined,
+  };
+  const focusIn = () => entry.onFocus?.();
+  holder.addEventListener("focusin", focusIn);
+  const input = terminal.onData((data) => {
+    void sdk.terminals.input({ terminalId, dataBase64: encodeBase64(data) }).catch(() => undefined);
+  });
+  const resize = terminal.onResize(({ cols, rows }) => {
+    void sdk.terminals.resize({ terminalId, cols, rows }).catch(() => undefined);
+  });
+
+  // BB has no push for terminal output: poll by sequence number, fast while text
+  // flows, slow when idle, hidden, or while KodaForge is not on screen.
+  let stopped = false;
+  let nextSeq: number | undefined;
+  let delay = 50;
+  const poll = async () => {
+    while (!stopped) {
+      let hadData = false;
+      try {
+        const out = await sdk.terminals.output(
+          nextSeq === undefined ? { terminalId, tailBytes: 512 * 1024 } : { terminalId, sinceSeq: nextSeq },
+        );
+        for (const chunk of out.chunks) terminal.write(decodeBase64(chunk.dataBase64));
+        hadData = out.chunks.length > 0;
+        nextSeq = out.nextSeq;
+        if (out.status === "exited" || out.status === "disconnected") {
+          terminal.write(`\r\n\x1b[2m[${out.status}${out.exitCode === null ? "" : ` with code ${out.exitCode}`}]\x1b[0m\r\n`);
+          entry.exited = { code: out.exitCode };
+          entry.onExit?.(out.exitCode);
+          return;
+        }
+      } catch {
+        // transient; retry with backoff
+      }
+      delay = nextPollDelay(delay, hadData, entry.visible);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  };
+  void poll();
+
+  entry.dispose = () => {
+    stopped = true;
+    holder.removeEventListener("focusin", focusIn);
+    input.dispose();
+    resize.dispose();
+    terminal.dispose();
+    holder.remove();
+  };
+  live.set(terminalId, entry);
+  return entry;
+}
+
 function XtermView({
   terminalId,
   hidden,
   focus,
-  keepOnExit,
-  registry,
   onFocus,
   onExit,
 }: {
   terminalId: string;
   hidden: boolean;
   focus?: boolean;
-  keepOnExit: boolean;
-  registry: Map<string, Terminal>;
   onFocus(): void;
   onExit(code: number | null): void;
 }) {
   const sdk = useSdk();
   const host = useRef<HTMLDivElement>(null);
-  const term = useRef<{ terminal: Terminal; fit: FitAddon } | null>(null);
-  const hiddenRef = useRef(hidden);
-  hiddenRef.current = hidden;
-  const latest = useRef({ onFocus, onExit, keepOnExit });
-  latest.current = { onFocus, onExit, keepOnExit };
+  const entryRef = useRef<LiveTerminal | null>(null);
   const codeTheme = experimental_useCodeTheme();
 
   useEffect(() => {
-    const terminal = new Terminal({
-      fontSize: 12,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      cursorBlink: true,
-      scrollback: 5000,
-    });
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
-    terminal.open(host.current!);
-    // ⌘K clears, as in VS Code; everything else goes to the shell.
-    terminal.attachCustomKeyEventHandler((event) => {
-      if (event.type === "keydown" && event.metaKey && event.key.toLowerCase() === "k") {
-        terminal.clear();
-        return false;
-      }
-      return true;
-    });
-    term.current = { terminal, fit };
-    registry.set(terminalId, terminal);
-    const focusIn = () => latest.current.onFocus();
-    host.current!.addEventListener("focusin", focusIn);
-    const input = terminal.onData((data) => {
-      void sdk.terminals.input({ terminalId, dataBase64: encodeBase64(data) }).catch(() => undefined);
-    });
-    const resize = terminal.onResize(({ cols, rows }) => {
-      void sdk.terminals.resize({ terminalId, cols, rows }).catch(() => undefined);
-    });
-
-    // BB has no push for terminal output: poll by sequence number, fast while
-    // text flows, slow when idle or hidden.
-    let stopped = false;
-    let nextSeq: number | undefined;
-    let delay = 50;
-    const poll = async () => {
-      while (!stopped) {
-        let hadData = false;
-        try {
-          const out = await sdk.terminals.output(
-            nextSeq === undefined ? { terminalId, tailBytes: 256 * 1024 } : { terminalId, sinceSeq: nextSeq },
-          );
-          for (const chunk of out.chunks) terminal.write(decodeBase64(chunk.dataBase64));
-          hadData = out.chunks.length > 0;
-          nextSeq = out.nextSeq;
-          if (out.status === "exited" || out.status === "disconnected") {
-            terminal.write(`\r\n\x1b[2m[${out.status}${out.exitCode === null ? "" : ` with code ${out.exitCode}`}]\x1b[0m\r\n`);
-            latest.current.onExit(out.exitCode);
-            return;
-          }
-        } catch {
-          // transient; retry with backoff
-        }
-        delay = nextPollDelay(delay, hadData, !hiddenRef.current);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    };
-    void poll();
-
+    const entry = attachTerminal(sdk, terminalId);
+    entryRef.current = entry;
+    host.current!.append(entry.holder);
+    entry.onFocus = onFocus;
+    entry.onExit = onExit;
+    // It may have exited while KodaForge was closed.
+    if (entry.exited !== null) onExit(entry.exited.code);
     const observer = new ResizeObserver(() => {
-      if (!hiddenRef.current && host.current?.offsetParent) fit.fit();
+      if (entry.visible && host.current?.offsetParent) entry.fit.fit();
     });
     observer.observe(host.current!);
-    const element = host.current!;
     return () => {
-      stopped = true;
       observer.disconnect();
-      element.removeEventListener("focusin", focusIn);
-      input.dispose();
-      resize.dispose();
-      registry.delete(terminalId);
-      terminal.dispose();
-      term.current = null;
+      entry.visible = false;
+      entry.onFocus = null;
+      entry.onExit = null;
+      // Detach, never dispose: the terminal lives on for the next visit.
+      entry.holder.remove();
+      entryRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sdk, terminalId]);
 
   useEffect(() => {
-    if (hidden || term.current === null) return;
+    const entry = entryRef.current;
+    if (entry === null) return;
+    entry.onFocus = onFocus;
+    entry.onExit = onExit;
+  });
+
+  useEffect(() => {
+    const entry = entryRef.current;
+    if (entry === null) return;
+    entry.visible = !hidden;
+    if (hidden) return;
     requestAnimationFrame(() => {
-      term.current?.fit.fit();
-      if (focus) term.current?.terminal.focus();
+      entry.fit.fit();
+      if (focus) entry.terminal.focus();
     });
   }, [hidden, focus]);
 
   useEffect(() => {
-    if (term.current === null) return;
+    const entry = entryRef.current;
+    if (entry === null) return;
     const colors = codeTheme.theme?.colors ?? {};
     const pick = (key: string) => colors[`terminal.${key}`];
-    term.current.terminal.options.theme = {
+    entry.terminal.options.theme = {
       background: colors["terminal.background"] ?? codeTheme.theme?.bg,
       foreground: colors["terminal.foreground"] ?? codeTheme.theme?.fg,
       cursor: colors["terminalCursor.foreground"],
@@ -422,5 +482,5 @@ function XtermView({
     };
   }, [codeTheme.theme]);
 
-  return <div ref={host} className={`absolute inset-0 px-2 pt-1 ${hidden ? "invisible" : ""}`} />;
+  return <div ref={host} className={`absolute inset-0 ${hidden ? "invisible" : ""}`} />;
 }
