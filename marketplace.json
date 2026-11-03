@@ -1,0 +1,23 @@
+{
+  "$schema": "https://getbb.app/schemas/marketplace.schema.json",
+  "schemaVersion": 1,
+  "name": "kodaks94",
+  "displayName": "Koda's Plugins",
+  "description": "BB plugins by Kodaks94.",
+  "plugins": [
+    {
+      "id": "kodaforge",
+      "displayName": "KodaForge",
+      "description": "A VS Code-style IDE inside BB: Monaco, explorer, search and replace, language servers, a Python debugger, split terminals, source control, and agent chat beside your code. With Koda the bear.",
+      "icon": { "url": "./assets/icon.svg" },
+      "tags": ["ide", "editor", "terminal", "git", "debugger"],
+      "author": { "name": "Kodaks94", "github": "Kodaks94", "url": "https://github.com/Kodaks94" },
+      "source": {
+        "git": {
+          "url": "https://github.com/Kodaks94/bb-plugin-kodaforge.git",
+          "range": "^0.2.0"
+        }
+      }
+    }
+  ]
+}

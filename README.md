@@ -2,6 +2,30 @@
 
 <img src="assets/icon.svg" width="64" alt="Koda, the KodaForge bear cub" style="image-rendering: pixelated">
 
+[![CI](https://github.com/Kodaks94/bb-plugin-kodaforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Kodaks94/bb-plugin-kodaforge/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Kodaks94/bb-plugin-kodaforge?sort=semver)](https://github.com/Kodaks94/bb-plugin-kodaforge/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+## Install in BB
+
+The quickest way is one command, pinned to the 0.x releases so updates arrive without breaking changes:
+
+```sh
+bb plugin install git:https://github.com/Kodaks94/bb-plugin-kodaforge.git@^0.2.0 --yes
+```
+
+Or add the marketplace once. KodaForge then appears in BB's plugin store, and future plugins
+from this marketplace will too:
+
+```sh
+bb marketplace add git:github.com/Kodaks94/bb-plugin-kodaforge@main
+bb plugin install kodaforge@kodaks94
+```
+
+Update with `bb plugin update kodaforge`, and check for updates with `bb plugin outdated`.
+Every release is listed on the [Releases page](https://github.com/Kodaks94/bb-plugin-kodaforge/releases),
+with its notes from the [CHANGELOG](CHANGELOG.md).
+
 A VS Code-style IDE inside BB for any project checkout, worktree or thread workspace, on
 this machine or a remote one. Agent chat, threads and workflows sit beside your code, and
 Koda the bear keeps you company.
@@ -210,16 +234,18 @@ Order and delivery are guaranteed.
 | esbuild, vitest (dev) | Monaco bundle, tests | MIT |
 | basedpyright / pyright, typescript-language-server, ruff, prettier (yours) | Language features | MIT / MIT, Apache-2.0, MIT, MIT |
 
-## Install from git
+## Releasing
 
-`monaco/` (the prebuilt editor bundle) is committed, because git installs don't run build
-scripts. Push this folder to a repository, then:
+1. Update `CHANGELOG.md` and set the same version in `package.json`.
+2. Commit, then tag and push: `git tag v0.3.0 && git push origin main v0.3.0`.
+3. The Release workflow checks that the tag matches `package.json`, runs the tests, and
+   publishes the GitHub Release with notes from the CHANGELOG, the package tarball, and the
+   package on GitHub Packages. BB users on `^0.x` get the update from `bb plugin update`.
 
-```sh
-bb plugin install git:https://github.com/<you>/bb-plugin-kodaforge.git --yes
-```
+`monaco/` (the prebuilt editor and icon bundle) is committed, because BB's git installs don't
+run build scripts. CI rebuilds it and fails if the committed icon map is out of date.
 
-## Install from a local path
+## Develop from a local path
 
 ```sh
 cd bb-plugin-ide

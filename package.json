@@ -1,10 +1,11 @@
 {
   "name": "bb-plugin-kodaforge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "bb": ">=0.48",
-    "bbPluginSdk": ">=0.6.104"
+    "bbPluginSdk": ">=0.6.104",
+    "node": ">=20"
   },
   "bb": {
     "name": "KodaForge",
@@ -76,7 +77,9 @@
     "hooks",
     "README.md",
     "LICENSE",
-    "assets"
+    "assets",
+    "marketplace.json",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "bb-plugin",
@@ -96,5 +99,9 @@
   },
   "bugs": {
     "url": "https://github.com/Kodaks94/bb-plugin-kodaforge/issues"
+  },
+  "author": {
+    "name": "Mahrad Pisheh Var",
+    "url": "https://github.com/Kodaks94"
   }
 }

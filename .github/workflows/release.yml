@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@kodaks94"
+      - name: Install
+        run: npm ci --ignore-scripts
+      - name: Tag matches package.json
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - name: Typecheck and test
+        run: npm run typecheck && npm test
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '$0 ~ "^## \\[?"v"\\]?" {on=1; next} /^## / && on {exit} on' CHANGELOG.md > notes.md
+          cat >> notes.md <<NOTES
+
+          ### Install in BB
+
+          \`\`\`sh
+          bb plugin install git:https://github.com/${GITHUB_REPOSITORY}.git@^${version} --yes
+          \`\`\`
+
+          Already installed? \`bb plugin update kodaforge\`
+          NOTES
+      - name: Package
+        run: npm pack
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "KodaForge $GITHUB_REF_NAME" --notes-file notes.md --verify-tag *.tgz
+      - name: Publish to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          npm pkg set name="@kodaks94/bb-plugin-kodaforge"
+          npm publish --ignore-scripts

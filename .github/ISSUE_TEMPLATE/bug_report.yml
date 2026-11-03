@@ -1,0 +1,24 @@
+name: Bug report
+description: Something in KodaForge does not work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: KodaForge version (`bb plugin list`) and BB version (`bb --version`).
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `bb plugin logs kodaforge`, and anything in KodaForge's Output panel.
+      render: text
