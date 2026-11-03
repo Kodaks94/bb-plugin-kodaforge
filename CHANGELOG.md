@@ -13,6 +13,8 @@ them from the `vX.Y.Z` tags.
 - Thread workspaces that are their own folder (such as personal workspaces) now appear in
   the workspace list, named after their thread.
 
+- A 20-second launch video at the top of the README (`docs/kodaforge-launch.mp4`).
+
 ### Fixed
 - The workspace picker showed a raw id (`environment/env_…`) for a workspace opened by link.
 

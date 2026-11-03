@@ -6,6 +6,10 @@
 [![Release](https://img.shields.io/github/v/release/Kodaks94/bb-plugin-kodaforge?sort=semver)](https://github.com/Kodaks94/bb-plugin-kodaforge/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+[![KodaForge in 20 seconds: watch the launch video](docs/kodaforge-launch.jpg)](docs/kodaforge-launch.mp4)
+
+<sub>20 seconds, sound on: click the image to play. Your agents code in BB. Now you can too.</sub>
+
 ## Install in BB
 
 The quickest way is one command, pinned to the 0.x releases so updates arrive without breaking changes:
