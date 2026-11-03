@@ -19,7 +19,9 @@ export function run(
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
-      stdio: ["pipe", "pipe", "pipe"],
+      // No stdin pipe unless there is input: a program that exits without reading
+      // it would otherwise make the write fail with EPIPE.
+      stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...options.env },
       signal: options.signal,
     });
@@ -27,12 +29,12 @@ export function run(
     const err: Buffer[] = [];
     let size = 0;
     const timer = setTimeout(() => child.kill("SIGKILL"), options.timeoutMs ?? 30_000);
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout!.on("data", (chunk: Buffer) => {
       size += chunk.length;
       if (size > maxBytes) child.kill("SIGKILL");
       else out.push(chunk);
     });
-    child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
+    child.stderr!.on("data", (chunk: Buffer) => err.push(chunk));
     child.on("error", (error) => {
       clearTimeout(timer);
       reject(error);
@@ -41,6 +43,10 @@ export function run(
       clearTimeout(timer);
       resolve({ code, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
     });
-    child.stdin.end(options.input ?? "");
+    if (child.stdin !== null) {
+      // A program may exit before reading all of its input; that is not an error here.
+      child.stdin.on("error", () => undefined);
+      child.stdin.end(options.input);
+    }
   });
 }

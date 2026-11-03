@@ -3,6 +3,13 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [0.2.1] - 2026-11-03
+
+### Fixed
+- Searching, git and formatting could fail with `EPIPE` (and take the host worker down) when
+  a program exited before reading its input, for example `git` in a folder that is not a
+  repository. Commands without input no longer get a stdin pipe, and stdin errors are handled.
+
 ## [0.2.0] - 2026-11-03
 
 ### Added
@@ -28,5 +35,6 @@ them from the `vX.Y.Z` tags.
 - Agent chat, threads and workflows in a right-hand panel.
 - Koda the bear, and colour coding from the BB theme.
 
+[0.2.1]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/releases/tag/v0.1.0

@@ -11,7 +11,7 @@
 The quickest way is one command, pinned to the 0.x releases so updates arrive without breaking changes:
 
 ```sh
-bb plugin install git:https://github.com/Kodaks94/bb-plugin-kodaforge.git@^0.2.0 --yes
+bb plugin install git:https://github.com/Kodaks94/bb-plugin-kodaforge.git@^0.2.1 --yes
 ```
 
 Or add the marketplace once. KodaForge then appears in BB's plugin store, and future plugins
