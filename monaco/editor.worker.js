@@ -1,0 +1,1 @@
+import{Wf as r,Xf as t,Zf as l}from"./chunks/chunk-BTXTNJ3K.js";import"./chunks/chunk-HISXAZ4Y.js";var o=!1;function n(i){if(o)return;o=!0;let s=new r(e=>{globalThis.postMessage(e)},e=>new l(t.getChannel(e),i));globalThis.onmessage=e=>{s.onmessage(e.data)}}globalThis.onmessage=i=>{o||n(null)};export{n as initialize};
