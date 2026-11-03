@@ -40,8 +40,16 @@ export interface TerminalApi {
 
 export const TerminalPanel = forwardRef<
   TerminalApi,
-  { workspace: ResolvedScope; visible: boolean; maximized: boolean; onToggleMaximize(): void; log(line: string): void }
->(function TerminalPanel({ workspace, visible, maximized, onToggleMaximize, log }, ref) {
+  {
+    workspace: ResolvedScope;
+    visible: boolean;
+    maximized: boolean;
+    onToggleMaximize(): void;
+    log(line: string): void;
+    /** Shell line that activates the selected Python environment in new terminals. */
+    activate?: string | null;
+  }
+>(function TerminalPanel({ workspace, visible, maximized, onToggleMaximize, log, activate }, ref) {
   const sdk = useSdk();
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [layout, setLayout] = useState<TerminalLayout>(emptyLayout);
@@ -103,6 +111,10 @@ export const TerminalPanel = forwardRef<
           ...(start ? { start: { mode: "argv" as const, argv: start.argv } } : {}),
         });
         setSessions((current) => [...(current ?? []), { id: session.id, title: session.title, command: start !== undefined }]);
+        // New shells start inside the workspace's Python environment, as in VS Code.
+        if (start === undefined && activate) {
+          void sdk.terminals.input({ terminalId: session.id, dataBase64: encodeBase64(`${activate}\r`) }).catch(() => undefined);
+        }
         setLayout((current) => addTerminal(current, session.id, split));
         return session.id;
       } catch (error) {
@@ -110,7 +122,7 @@ export const TerminalPanel = forwardRef<
         return null;
       }
     },
-    [sdk, sessions, workspace, log],
+    [sdk, sessions, workspace, log, activate],
   );
 
   const kill = useCallback(

@@ -3,6 +3,21 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [0.4.0] - 2026-11-03
+
+### Added
+- **Python environments.** KodaForge finds the interpreters a workspace can use: venvs inside
+  the workspace (venv, uv, Poetry's in-project `.venv`), conda, pyenv, Poetry's cache, and
+  Python on PATH. The status bar shows the one in use (the workspace's own venv by default),
+  and a click switches it, creates a `.venv`, or rescans. The choice drives pyright
+  (`python.pythonPath`), the debugger, new terminals (activated automatically) and tasks.
+- **Tasks view.** Makefile targets (with their `## help`) and package.json scripts, at the
+  root or two folders down. Run one with a click; it runs in a terminal with the selected
+  Python environment first on PATH. Click a name to jump to its definition.
+- **Search everything (⌘P).** One box for files, symbols (from the language servers), text
+  in files and commands. Prefixes narrow it, as in VS Code: `>` commands, `#` symbols,
+  `%` text, `:12` or `:12:5` go to a line.
+
 ## [0.3.0] - 2026-11-03
 
 ### Added
@@ -56,6 +71,7 @@ them from the `vX.Y.Z` tags.
 - Agent chat, threads and workflows in a right-hand panel.
 - Koda the bear, and colour coding from the BB theme.
 
+[0.4.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.0...v0.2.1

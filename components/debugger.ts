@@ -95,7 +95,9 @@ class DapConnection {
 
 const BP_KEY = (scope: Scope) => `kodaforge:breakpoints:${scope.kind}:${scope.id}`;
 
-export function useDebugger(scope: Scope, root: string | null, log: (line: string) => void) {
+export function useDebugger(scope: Scope, root: string | null, log: (line: string) => void, pythonPath: string | null = null) {
+  const pythonRef = useRef(pythonPath);
+  pythonRef.current = pythonPath;
   const rpc = useRpc<typeof rpcContract>();
   const conn = useRef<DapConnection | null>(null);
   const configured = useRef(false);
@@ -240,6 +242,8 @@ export function useDebugger(scope: Scope, root: string | null, log: (line: strin
             type: "python",
             request: "launch",
             program: abs(path),
+            // Run the program with the workspace's selected interpreter (its venv's packages).
+            ...(pythonRef.current ? { python: pythonRef.current } : {}),
             args: args.trim() === "" ? [] : args.trim().split(/\s+/),
             cwd: root,
             console: "internalConsole",

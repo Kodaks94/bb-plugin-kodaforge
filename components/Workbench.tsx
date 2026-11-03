@@ -33,11 +33,14 @@ import { SidePanel, type SideTab } from "./SidePanel";
 import { FileIcon, FileIconProvider } from "./FileIcon";
 import { useDebugger } from "./debugger";
 import { DebugConsole, DebugToolbar, DebugView } from "./DebugView";
+import { TasksView } from "./TasksView";
+import { SearchEverywhere, type TextHit } from "./SearchEverywhere";
+import { taskArgv, type Task } from "@/lib/tasks";
 import type { Hue } from "@/lib/file-colors";
 import { remapPath } from "@/lib/editor-state";
 
 type Editor = MonacoApi.editor.IStandaloneCodeEditor;
-type View = "explorer" | "search" | "scm" | "debug" | "problems";
+type View = "explorer" | "search" | "scm" | "debug" | "tasks" | "problems";
 type PanelTab = "terminal" | "debug" | "problems" | "output";
 
 // A plain object, not defineRpcContract(): the app bundle may only import the SDK's /app entry at runtime.
@@ -59,6 +62,7 @@ const VIEWS: { id: View; icon: string; label: string; keys: string; hue: Hue }[]
   { id: "search", icon: "Search", label: "Search", keys: "⌘⇧F", hue: "yellow" },
   { id: "scm", icon: "GitBranch", label: "Source Control", keys: "⌘⇧G", hue: "orange" },
   { id: "debug", icon: "Bug", label: "Run and Debug", keys: "⌘⇧D", hue: "red" },
+  { id: "tasks", icon: "Play", label: "Tasks (Makefile, npm scripts)", keys: "", hue: "green" },
   { id: "problems", icon: "AlertTriangle", label: "Problems", keys: "", hue: "red" },
 ];
 
@@ -163,8 +167,20 @@ export function Workbench({
     })(),
   ).current;
   const [state, dispatch] = useReducer(editorReducer, initialEditorState);
-  const lsp = useLanguageServers(monaco, docs, scope, resolved?.root ?? null, log);
-  const debug = useDebugger(scope, resolved?.root ?? null, log);
+  // Python environments: the selected one drives pyright, the debugger, new terminals and tasks.
+  type PyEnvs = { envs: { python: string; kind: string; name: string; version: string; local: boolean; activate: string | null }[]; selected: string | null };
+  const [pyEnvs, setPyEnvs] = useState<PyEnvs | null>(null);
+  const loadPythonEnvs = useCallback(
+    () => rpc.call("pythonEnvs", { scope }).then(setPyEnvs, () => setPyEnvs({ envs: [], selected: null })),
+    [rpc, scope],
+  );
+  useEffect(() => {
+    if (resolved !== null) void loadPythonEnvs();
+  }, [resolved, loadPythonEnvs]);
+  const pyEnv = pyEnvs?.envs.find((env) => env.python === pyEnvs.selected) ?? null;
+
+  const lsp = useLanguageServers(monaco, docs, scope, resolved?.root ?? null, log, pyEnv?.python ?? null);
+  const debug = useDebugger(scope, resolved?.root ?? null, log, pyEnv?.python ?? null);
 
   /** ⌘S: format with ruff/prettier when available, then the hash-guarded save. */
   const save = useCallback(
@@ -203,7 +219,7 @@ export function Workbench({
     }
     return terminalRef.current;
   }, []);
-  const [palette, setPalette] = useState<"files" | "commands" | "branches" | null>(null);
+  const [palette, setPalette] = useState<"files" | "commands" | "branches" | "python" | null>(null);
   const [scmBranch, setScmBranch] = useState<string | null>(null);
   const [branchList, setBranchList] = useState<{ current: string | null; local: string[]; remote: string[] } | null>(null);
   const [newBranch, setNewBranch] = useState(false);
@@ -401,21 +417,48 @@ export function Workbench({
   }, []);
   useRealtimeChanges(resolved?.root ?? null, markFilesStale);
 
-  const fileItems = useMemo<PaletteItem[]>(
-    () =>
-      (fileList?.paths ?? []).map((path) => {
-        const slash = path.lastIndexOf("/");
-        return {
-          id: path,
-          label: path.slice(slash + 1),
-          detail: slash === -1 ? "" : path.slice(0, slash),
-          match: path,
-          icon: <FileIcon path={path} />,
-          run: () => void openFile(path),
-        };
-      }),
-    [fileList, openFile],
-  );
+  const runTask = async (task: Task) => {
+    const api = await terminalApi();
+    const envBin = pyEnv ? pyEnv.python.slice(0, pyEnv.python.lastIndexOf("/")) : null;
+    log(`Running ${task.kind === "make" ? "make" : "npm run"} ${task.name}${pyEnv ? ` with ${pyEnv.name}` : ""}`);
+    await api?.run(taskArgv(task, envBin), `${task.kind === "make" ? "make" : "npm"} ${task.name}`);
+    markFilesStale();
+  };
+
+  const searchText = (query: string): Promise<TextHit[]> =>
+    rpc
+      .call("search", { scope, options: { query: { query, regex: false, matchCase: false, wholeWord: false }, include: "", exclude: "" } })
+      .then((result) => result.files.flatMap((file) => file.matches.map((m) => ({ path: file.path, line: m.line, column: m.column, length: m.length, preview: m.preview }))));
+
+  const pythonItems: PaletteItem[] =
+    pyEnvs === null
+      ? []
+      : [
+          ...pyEnvs.envs.map((env) => ({
+            id: env.python,
+            label: `${env.python === pyEnvs.selected ? "● " : ""}${env.name}`,
+            detail: `Python ${env.version} · ${env.kind}${env.local ? " · in this workspace" : ""}`,
+            match: `${env.name} ${env.version} ${env.kind}`,
+            run: () =>
+              void rpc.call("pythonSelect", { scope, python: env.python }).then(
+                ({ selected }) => {
+                  setPyEnvs({ ...pyEnvs, selected });
+                  log(`Python: using ${env.name} (${env.version})`);
+                },
+                (error: Error) => log(`Python: ${error.message}`),
+              ),
+          })),
+          {
+            id: "+venv",
+            label: "+ Create a .venv in this workspace",
+            detail: "python3 -m venv .venv, in a terminal",
+            run: () =>
+              void terminalApi()
+                .then((api) => api?.run(["python3", "-m", "venv", ".venv"], "python -m venv .venv"))
+                .then(() => loadPythonEnvs()),
+          },
+          { id: "rescan", label: "Rescan environments", run: () => void loadPythonEnvs() },
+        ];
 
   const commands = useMemo<PaletteItem[]>(() => {
     const own: PaletteItem[] = [
@@ -427,7 +470,9 @@ export function Workbench({
         run: () => open.filter((p) => docs.isDirty(p)).forEach((p) => void save(p)),
       },
       { id: "revert", label: "File: Revert File", run: () => activePath && void docs.reload(activePath) },
-      { id: "quickOpen", label: "Go to File…", run: () => setPalette("files") },
+      { id: "quickOpen", label: "Search Everything (Files, Symbols, Text)…", run: () => setPalette("files") },
+      { id: "python", label: "Python: Select Interpreter", run: () => setPalette("python") },
+      { id: "tasks", label: "Tasks: Show Tasks", run: () => setView("tasks") },
       { id: "search", label: "Search: Find in Files", run: () => setView("search") },
       { id: "scm", label: "View: Show Source Control", run: () => setView("scm") },
       { id: "branch", label: "Git: Switch Branch…", run: () => setPalette("branches") },
@@ -820,6 +865,15 @@ export function Workbench({
                       log={log}
                     />
                   }
+                  tasksView={
+                    <TasksView
+                      scope={scope}
+                      changeTick={changeTick}
+                      envName={pyEnv ? `${pyEnv.name} (Python ${pyEnv.version})` : null}
+                      onRun={(task) => void runTask(task)}
+                      onOpenAt={(path, line) => void openAt(path, line, 1)}
+                    />
+                  }
                   debugView={
                     <DebugView
                       debug={debug}
@@ -898,6 +952,7 @@ export function Workbench({
                       terminal={
                         <TerminalPanel
                           ref={terminalRef}
+                          activate={pyEnv?.activate ?? null}
                           workspace={resolved}
                           visible={panel === "terminal"}
                           maximized={panelMax}
@@ -959,6 +1014,17 @@ export function Workbench({
           <span className="flex items-center gap-0.5" style={{ color: warnings > 0 ? hues.yellow : undefined }}><Icon name="AlertTriangle" className="size-3" />{warnings}</span>
         </button>
         <span className="flex-1" />
+        {pyEnvs !== null && (pyEnv !== null || pyEnvs.envs.some((env) => env.local) || activePath?.endsWith(".py")) ? (
+          <button
+            type="button"
+            title={pyEnv ? `${pyEnv.python}\nClick to change the Python interpreter` : "Select a Python interpreter"}
+            className="flex items-center gap-1 hover:text-foreground"
+            onClick={() => setPalette("python")}
+          >
+            <FileIcon path="python.py" className="size-3" />
+            {pyEnv ? `${pyEnv.version} · ${pyEnv.name.replace(/^(conda|pyenv|poetry|system): /, "")}` : "Select Python"}
+          </button>
+        ) : null}
         {Object.entries(lsp.states).map(([language, state]) =>
           state === undefined ? null : (
             <button
@@ -982,12 +1048,19 @@ export function Workbench({
         {activePath !== null && docs.meta(activePath)?.readOnly ? <span>Read-only</span> : null}
       </footer>
       {palette === "files" ? (
-        <Palette
-          placeholder={fileList?.truncated ? "Search files by name (list truncated)" : "Search files by name"}
-          items={fileItems}
-          loading={fileList === null}
+        <SearchEverywhere
+          files={fileList?.paths ?? null}
+          commands={commands}
+          symbols={lsp.symbols}
+          searchText={searchText}
+          onOpenFile={(path) => void openFile(path)}
+          onOpenAt={(path, line, column, length) => void openAt(path, line, column, length)}
+          onGotoLine={(line, column) => activePath !== null && !activePath.startsWith("diff:") && void openAt(activePath, line, column)}
           onClose={() => setPalette(null)}
         />
+      ) : null}
+      {palette === "python" ? (
+        <Palette placeholder="Select the Python interpreter for this workspace" items={pythonItems} loading={pyEnvs === null} onClose={() => setPalette(null)} />
       ) : null}
       {palette === "branches" ? (
         <Palette placeholder="Select a branch to switch to" items={branchItems} loading={branchList === null} onClose={() => setPalette(null)} />
@@ -1039,6 +1112,7 @@ function useRealtimeChanges(root: string | null, onChange: () => void) {
 }
 
 function SideBar({
+  tasksView,
   debugView,
   explorer,
   search,
@@ -1051,6 +1125,7 @@ function SideBar({
   markers,
   onReveal,
 }: {
+  tasksView: ReactNode;
   debugView: ReactNode;
   explorer: ReactNode;
   search: ReactNode;
@@ -1087,6 +1162,8 @@ function SideBar({
           </div>
         ) : view === "search" ? (
           search
+        ) : view === "tasks" ? (
+          tasksView
         ) : view === "debug" ? (
           debugView
         ) : view === "scm" ? (

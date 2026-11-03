@@ -129,18 +129,46 @@ export interface LspContext {
   modelFor(path: string): Model | null;
   /** Open a file as a model (no tab), for definitions and rename edits in other files. */
   ensureModel(path: string): Promise<Model | null>;
+  /** Settings the server asks for through workspace/configuration (e.g. python.pythonPath). */
+  settings(): Record<string, unknown>;
   log(line: string): void;
+}
+
+export interface WorkspaceSymbol {
+  name: string;
+  kind: number;
+  container: string;
+  path: string;
+  line: number;
+  column: number;
+}
+
+export interface LanguageClient {
+  dispose(): void;
+  /** workspace/symbol, limited to files inside the workspace. */
+  workspaceSymbols(query: string): Promise<WorkspaceSymbol[]>;
+}
+
+/** Look up "a.b.c" in nested settings; null when absent (what servers expect). */
+export function settingAt(settings: Record<string, unknown>, section: string | undefined): unknown {
+  if (!section) return settings;
+  let value: unknown = settings;
+  for (const key of section.split(".")) {
+    if (value === null || typeof value !== "object" || !(key in value)) return null;
+    value = (value as Record<string, unknown>)[key];
+  }
+  return value;
 }
 
 export type LspState = { status: "starting" | "ready" | "stopped" | "failed"; detail?: string };
 
-/** Start one language server and wire it into Monaco. Returns a disposer. */
+/** Start one language server and wire it into Monaco. */
 export async function startLanguageClient(
   language: ServerLanguage,
   url: string,
   context: LspContext,
   onState: (state: LspState) => void,
-): Promise<() => void> {
+): Promise<LanguageClient> {
   const { monaco, root } = context;
   const disposables: MonacoApi.IDisposable[] = [];
   const versions = new Map<string, number>();
@@ -156,7 +184,9 @@ export async function startLanguageClient(
     context.log(`${language} language server: ${reason}`);
   };
   connection.onRequest = async (method, params) => {
-    if (method === "workspace/configuration") return (params as P.ConfigurationParams).items.map(() => null);
+    if (method === "workspace/configuration") {
+      return (params as P.ConfigurationParams).items.map((item) => settingAt(context.settings(), item.section));
+    }
     if (method === "workspace/workspaceFolders") return [{ uri: toFileUri(root, "").replace(/\/$/, ""), name: "workspace" }];
     if (method === "workspace/applyEdit") {
       await applyWorkspaceEdit((params as P.ApplyWorkspaceEditParams).edit);
@@ -491,7 +521,7 @@ export async function startLanguageClient(
   };
   savedListeners.add(didSave);
 
-  return () => {
+  const dispose = () => {
     disposed = true;
     savedListeners.delete(didSave);
     for (const timer of pendingChanges.values()) clearTimeout(timer);
@@ -501,6 +531,30 @@ export async function startLanguageClient(
     connection.close();
     onState({ status: "stopped" });
   };
+
+  async function workspaceSymbols(query: string): Promise<WorkspaceSymbol[]> {
+    if (!capabilities.workspaceSymbolProvider || disposed) return [];
+    const result = await connection
+      .request<(P.SymbolInformation | P.WorkspaceSymbol)[] | null>("workspace/symbol", { query }, 10_000)
+      .catch(() => null);
+    const symbols: WorkspaceSymbol[] = [];
+    for (const symbol of result ?? []) {
+      const path = fromFileUri(root, symbol.location.uri);
+      if (path === null) continue;
+      const range = "range" in symbol.location ? symbol.location.range : null;
+      symbols.push({
+        name: symbol.name,
+        kind: symbol.kind,
+        container: symbol.containerName ?? "",
+        path,
+        line: (range?.start.line ?? 0) + 1,
+        column: (range?.start.character ?? 0) + 1,
+      });
+    }
+    return symbols;
+  }
+
+  return { dispose, workspaceSymbols };
 }
 
 /** Saves notify every running client (didSave). */

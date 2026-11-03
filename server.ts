@@ -208,6 +208,15 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: z.object({ result: z.unknown() }),
   },
+  /** Python environments for this workspace, and the one in use (saved per workspace). */
+  pythonEnvs: {
+    input: z.object({ scope: scopeSchema }).strict(),
+    output: z.object({ envs: hostContract.pythonEnvs.output.shape.envs, selected: z.string().nullable() }),
+  },
+  pythonSelect: {
+    input: z.object({ scope: scopeSchema, python: z.string().max(4096).nullable() }).strict(),
+    output: z.object({ selected: z.string().nullable() }),
+  },
   monacoAssets: {
     input: z.null(),
     output: z.object({ baseUrl: z.string(), expiresAtMs: z.number() }),
@@ -614,6 +623,29 @@ export default async function plugin(bb: BbPluginApi) {
         { root: resolved.root, context: { projectId: resolved.projectId, environmentId: resolved.environmentId, threadId: thread }, request },
         { hostId: resolved.hostId },
       );
+    },
+
+    async pythonEnvs({ scope }) {
+      const resolved = await target(scope);
+      const { envs } = await host.call("pythonEnvs", { root: resolved.root }, { hostId: resolved.hostId });
+      const saved = await bb.storage.kv.get<string>(`python:${resolved.hostId}:${resolved.root}`);
+      // A saved choice that no longer exists falls back to the default: the workspace's own env.
+      const selected = envs.find((env) => env.python === saved)?.python ?? envs.find((env) => env.local)?.python ?? null;
+      return { envs, selected };
+    },
+
+    async pythonSelect({ scope, python }) {
+      const resolved = await target(scope);
+      const key = `python:${resolved.hostId}:${resolved.root}`;
+      if (python === null) {
+        await bb.storage.kv.delete(key);
+        return { selected: null };
+      }
+      // Only an interpreter the host just found: the browser never names a program to run.
+      const { envs } = await host.call("pythonEnvs", { root: resolved.root }, { hostId: resolved.hostId });
+      if (!envs.some((env) => env.python === python)) throw new Error("That interpreter was not found in this workspace's environments");
+      await bb.storage.kv.set(key, python);
+      return { selected: python };
     },
 
     async monacoAssets() {
