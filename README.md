@@ -39,6 +39,34 @@ It opens in two places, both marked with Koda's bear icon:
 - **KodaForge** in the sidebar: a full page with a workspace picker.
 - **KodaForge** in a thread's side-panel actions: a tab pinned to that thread's workspace.
 
+## Search everything (⌘P)
+
+One box finds files, symbols, text in files and commands, and jumps straight to the result.
+Narrow it with VS Code's prefixes: `>` commands, `#` symbols, `%` text, `:42` or `:42:7` a
+line in the open file.
+
+## Python environments
+
+KodaForge finds every interpreter the workspace can use, VS Code style:
+- venvs inside the workspace (venv, uv, Poetry's in-project `.venv`)
+- conda environments, pyenv versions, and this project's Poetry environments
+- Python on PATH
+
+The status bar shows the one in use: the workspace's own venv by default, and a click
+switches it. The choice is remembered per workspace and used everywhere:
+- **pyright** resolves imports from it.
+- **The debugger** runs your program with it.
+- **New terminals** start with it activated.
+- **Tasks** run with its `bin` first on PATH.
+
+Only an interpreter KodaForge itself found can be selected.
+
+## Tasks
+
+The Tasks view (play icon) lists Makefile targets, with their `## help` text, and
+package.json scripts, at the root and up to two folders down. ▶ runs one in a terminal; click
+a name to open its definition.
+
 ## Several projects at once
 
 Open as many workspaces as you like (project checkouts, worktrees, thread workspaces) as

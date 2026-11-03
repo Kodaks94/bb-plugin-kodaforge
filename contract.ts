@@ -142,6 +142,22 @@ export const hostContract = defineRpcContract({
       .strict(),
     output: z.object({ result: z.unknown() }),
   },
+  pythonEnvs: {
+    experimental_retryable: true,
+    input: rootInput,
+    output: z.object({
+      envs: z.array(
+        z.object({
+          python: z.string(),
+          kind: z.enum(["venv", "uv", "conda", "pyenv", "poetry", "system"]),
+          name: z.string(),
+          version: z.string(),
+          local: z.boolean(),
+          activate: z.string().nullable(),
+        }),
+      ),
+    }),
+  },
   gitStatus: {
     experimental_retryable: true,
     input: rootInput,
