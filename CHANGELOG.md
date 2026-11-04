@@ -19,6 +19,11 @@ them from the `vX.Y.Z` tags.
 ### Changed
 - In the Agent Network, Koda (the sun) wears sunglasses. Everywhere else he looks as before.
 - The Agent Network's activity-bar icon is a Saturn instead of a target.
+- A calmer Agent Network:
+  - The header is one row: the title, a single line of counts with zeros left out, the
+    Coding / App switch and the controls.
+  - The legend moved behind a Key button.
+  - Only agents, runs and app MCP servers are labelled; everything else names itself on hover.
 
 ## [0.6.0] - 2026-11-04
 

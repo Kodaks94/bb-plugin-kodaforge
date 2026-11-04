@@ -113,6 +113,13 @@ export function AgentNetwork({
   );
   const working = mine.filter((t) => t.state === "working").length;
   const count = (kind: string) => arch?.nodes.filter((n) => n.kind === kind).length ?? 0;
+  const [showKey, setShowKey] = useState(false);
+  // One quiet line of counts (zeros left out) instead of a row of chips.
+  const tally = (parts: [number, string][]) => parts.filter(([n]) => n > 0).map(([n, what]) => `${n} ${what}`).join(" · ");
+  const summary =
+    mode === "app"
+      ? tally([[count("agent"), "agents"], [count("tool"), "tools"], [count("mcp"), "MCP servers"], [count("model"), "models"], [count("skill"), "skills"]]) || "Scanning the code…"
+      : tally([[working, "working"], [mine.length - working, "idle"], [runs.length, "workflows"], [mcps.length, "MCP servers"]]) || "No agents yet";
 
   // Canvas, camera and interaction.
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -148,10 +155,10 @@ export function AgentNetwork({
       last = now;
       const cam = camera.current;
       // The MCP belt (plus its labels) fits between the header and the legend.
-      const usable = Math.min(width - 40, height - 150);
+      const usable = Math.min(width - 40, height - 110);
       const scale = (Math.max(usable, 160) / 2 / 330) * cam.zoom;
       const cx = width / 2 + cam.x;
-      const cy = 76 + (height - 76 - 56) / 2 + cam.y;
+      const cy = 56 + (height - 56 - 36) / 2 + cam.y; // below the header, above the Key button
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
@@ -296,13 +303,15 @@ export function AgentNetwork({
             ctx.lineWidth = 1;
           }
         }
+        // Names on the main bodies only; tools, models, skills and coding-mode MCP stations on hover.
         const showLabel =
-          hovered || (showLabels && (body.kind === "run" || body.kind === "mcp" || body.kind === "appAgent" || body.kind === "model" || (body.kind === "thread" && (body.working || scale > 0.9))));
+          hovered ||
+          (showLabels && (body.kind === "run" || body.kind === "appAgent" || (body.kind === "mcp" && view === "app") || (body.kind === "thread" && (body.working || scale > 0.9))));
         if (showLabel) {
-          ctx.font = `${hovered ? 600 : 500} 11px ui-sans-serif, system-ui, sans-serif`;
+          ctx.font = `${hovered ? 600 : 500} ${hovered ? 11 : 10}px ui-sans-serif, system-ui, sans-serif`;
           ctx.textAlign = "center";
           ctx.fillStyle = hovered ? "#ffffff" : "rgba(225,232,255,0.78)";
-          ctx.fillText(truncate(body.label, hovered ? 40 : 22), p.x, p.y + p.r + 14);
+          ctx.fillText(truncate(body.label, hovered ? 40 : 18), p.x, p.y + p.r + 13);
         }
       }
     };
@@ -397,20 +406,19 @@ export function AgentNetwork({
           const at = local(event);
           const box = canvasRef.current!.getBoundingClientRect();
           const ox = at.x - box.width / 2 - cam.x;
-          const oy = at.y - (76 + (box.height - 132) / 2) - cam.y;
+          const oy = at.y - (56 + (box.height - 92) / 2) - cam.y;
           cam.x -= ox * (next / cam.zoom - 1);
           cam.y -= oy * (next / cam.zoom - 1);
           cam.zoom = next;
         }}
       />
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start gap-3 p-4">
-        <div>
+      <header className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 px-4 pt-3">
+        <div className="min-w-0" title={workspace.label}>
           <h2 className="text-sm font-semibold tracking-wide text-white">Agent Network</h2>
-          <p className="text-[11px] text-white/55">
-            {workspace.label} · {mode === "app" ? "what this project's code builds" : "who is working on this project"}
-          </p>
+          <p className="truncate text-[11px] text-white/50">{summary}</p>
         </div>
+        <span className="flex-1" />
         <div className="pointer-events-auto flex rounded-md border border-white/10 bg-white/5 p-0.5 text-[11px] backdrop-blur" role="tablist" aria-label="Agent Network mode">
           {(["coding", "app"] as const).map((m) => (
             <button
@@ -419,7 +427,7 @@ export function AgentNetwork({
               role="tab"
               aria-selected={mode === m}
               title={m === "app" ? "The agents, tools, MCP servers, models and skills this project's code defines" : "The agents, workflows and MCP servers working on this project"}
-              className={`rounded px-2 py-0.5 ${mode === m ? "bg-white/15 font-semibold text-white" : "text-white/60 hover:text-white"}`}
+              className={`rounded px-2.5 py-0.5 ${mode === m ? "bg-white/15 font-semibold text-white" : "text-white/60 hover:text-white"}`}
               onClick={() => {
                 setHover(null);
                 setMode(m);
@@ -429,23 +437,6 @@ export function AgentNetwork({
             </button>
           ))}
         </div>
-        {mode === "app" ? (
-          <div className="flex flex-wrap gap-1.5">
-            <Stat color={hues.orange} label="agents" value={count("agent")} />
-            <Stat color={hues.yellow} label="tools" value={count("tool")} />
-            <Stat color={hues.cyan} label="MCP servers" value={count("mcp")} />
-            <Stat color={hues.blue} label="models" value={count("model")} />
-            <Stat color={hues.green} label="skills" value={count("skill")} />
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            <Stat color={hues.blue} label="working" value={working} />
-            <Stat color="#9aa5c4" label="idle" value={mine.length - working} />
-            <Stat color={hues.green} label="workflows" value={runs.length} />
-            <Stat color={hues.cyan} label="MCP servers" value={mcps.length} />
-          </div>
-        )}
-        <span className="flex-1" />
         <div className="pointer-events-auto flex gap-1">
           <Toggle icon={paused ? "Play" : "Pause"} label={paused ? "Resume motion" : "Pause motion"} onClick={() => setPaused((v) => !v)} />
           <Toggle icon="Info" label={labels ? "Hide labels" : "Show labels"} onClick={() => setLabels((v) => !v)} />
@@ -453,26 +444,46 @@ export function AgentNetwork({
         </div>
       </header>
 
-      {mode === "app" ? (
-        <footer className="pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 p-4 text-[11px] text-white/60">
-          <Legend shape="dot" color={hues.orange} label="Agent" />
-          <Legend shape="dot" color={hues.magenta} label="Direct LLM call" />
-          <Legend shape="dot" color={hues.yellow} label="Tool (moon)" />
-          <Legend shape="diamond" color={hues.cyan} label="MCP server" />
-          <Legend shape="ring" color={hues.blue} label="Model" />
-          <Legend shape="diamond" color={hues.green} label="Skill" />
-          <span>Read from the source, not run · click anything to open its code</span>
-        </footer>
-      ) : (
-        <footer className="pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 p-4 text-[11px] text-white/60">
-          <Legend shape="dot" color={hues.orange} label="Claude Code agent" />
-          <Legend shape="dot" color={hues.green} label="Codex agent" />
-          <Legend shape="dot" color={hues.magenta} label="Other agent" />
-          <Legend shape="ring" color={hues.green} label="Workflow run" />
-          <Legend shape="diamond" color={hues.cyan} label="MCP server" />
-          <span>Inner orbit: working · outer: idle · moons: sub-agents</span>
-        </footer>
-      )}
+      <div className="absolute bottom-3 left-3 flex flex-col items-start gap-2">
+        {showKey ? (
+          <div className="w-56 rounded-lg border border-white/10 bg-[#0d0f1f]/85 p-3 text-[11px] text-white/70 shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur">
+            <div className="grid gap-1.5">
+              {(mode === "app"
+                ? ([
+                    ["dot", hues.orange, "Agent"],
+                    ["dot", hues.magenta, "Direct LLM call"],
+                    ["dot", hues.yellow, "Tool (moon of its agent or server)"],
+                    ["diamond", hues.cyan, "MCP server"],
+                    ["ring", hues.blue, "Model"],
+                    ["diamond", hues.green, "Skill"],
+                  ] as const)
+                : ([
+                    ["dot", hues.orange, "Claude Code agent"],
+                    ["dot", hues.green, "Codex agent"],
+                    ["dot", hues.magenta, "Other agent"],
+                    ["ring", hues.green, "Workflow run"],
+                    ["diamond", hues.cyan, "MCP server"],
+                  ] as const)
+              ).map(([shape, color, label]) => (
+                <Legend key={label} shape={shape} color={color} label={label} />
+              ))}
+            </div>
+            <p className="mt-2 border-t border-white/10 pt-2 text-[10px] leading-snug text-white/45">
+              {mode === "app"
+                ? "Read from the source, not run. Hover for names, click to open the code."
+                : "Inner orbit: working · outer: idle · moons: sub-agents. Hover an agent to see its MCP reach."}
+            </p>
+          </div>
+        ) : null}
+        <button
+          type="button"
+          aria-expanded={showKey}
+          className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60 backdrop-blur hover:bg-white/10 hover:text-white"
+          onClick={() => setShowKey((v) => !v)}
+        >
+          {showKey ? "Hide key" : "Key"}
+        </button>
+      </div>
 
       {mode === "app" && arch !== null && arch.nodes.length === 0 ? (
         <p className="pointer-events-none absolute inset-x-0 bottom-20 text-center text-xs text-white/60">
@@ -500,16 +511,6 @@ export function AgentNetwork({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function Stat({ color, label, value }: { color: string; label: string; value: number }) {
-  return (
-    <span className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/80 backdrop-blur">
-      <span className="size-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-      <span className="font-semibold tabular-nums text-white">{value}</span>
-      {label}
-    </span>
   );
 }
 
