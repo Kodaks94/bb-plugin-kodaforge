@@ -12,7 +12,7 @@ import type * as MonacoApi from "monaco-editor/esm/vs/editor/editor.api.js";
 import { z } from "zod";
 import type { PluginRpcContract } from "@get-bb/plugin-sdk";
 import type { ResolvedScope, rpcContract, Scope } from "../server";
-import { editorReducer, initialEditorState, openPaths } from "@/lib/editor-state";
+import { AGENTS_TAB, editorReducer, initialEditorState, isVirtualTab, openPaths } from "@/lib/editor-state";
 import { Icon } from "@/components/ui/icon";
 import { applyTheme, loadMonaco, type Monaco } from "./monaco";
 import { useDocuments } from "./use-documents";
@@ -41,6 +41,7 @@ import { remapPath } from "@/lib/editor-state";
 import { cleanupOnSave, editorOptions } from "@/lib/settings";
 import { useSettings } from "./use-settings";
 import { SettingsView } from "./SettingsView";
+import { AgentNetwork } from "./AgentNetwork";
 
 type Editor = MonacoApi.editor.IStandaloneCodeEditor;
 type View = "explorer" | "search" | "scm" | "debug" | "tasks" | "problems" | "settings";
@@ -158,7 +159,7 @@ export function Workbench({
     view?: View | null;
     panel?: PanelTab | null;
     panelMax?: boolean;
-    groups?: { tabs: string[]; active: string | null }[];
+    groups?: { tabs: string[]; active: string | null; pinned?: string[] }[];
     focused?: number;
   }>(
     (() => {
@@ -408,14 +409,14 @@ export function Workbench({
       for (const group of groups) {
         const tabs: string[] = [];
         for (const path of group.tabs) {
-          if (path.startsWith("diff:")) tabs.push(path);
+          if (isVirtualTab(path)) tabs.push(path);
           else if (await docs.open(path).catch(() => false)) tabs.push(path);
         }
-        kept.push({ tabs, active: group.active });
+        kept.push({ tabs, active: group.active, pinned: group.pinned });
       }
       // Track the reopened files only now, together with the tabs that show them,
       // so the unused-model cleanup never sees one without the other.
-      for (const group of kept) for (const path of group.tabs) if (!path.startsWith("diff:")) trackedPaths.current.add(path);
+      for (const group of kept) for (const path of group.tabs) if (!isVirtualTab(path)) trackedPaths.current.add(path);
       dispatch({ type: "restore", groups: kept, focused: savedLayout.focused ?? 0 });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -429,7 +430,7 @@ export function Workbench({
         view,
         panel,
         panelMax,
-        groups: state.groups.map((group) => ({ tabs: group.tabs, active: group.active })),
+        groups: state.groups.map((group) => ({ tabs: group.tabs, active: group.active, pinned: group.pinned })),
         focused: state.focused,
       }),
     );
@@ -447,6 +448,15 @@ export function Workbench({
     },
     [state.groups, docs],
   );
+
+  /** ⌘⇧T: bring back the most recently closed tab that can still be opened. */
+  const reopenClosed = () => {
+    const path = state.closed.at(-1);
+    if (path === undefined) return;
+    dispatch({ type: "forgetClosed", path });
+    if (isVirtualTab(path)) dispatch({ type: "open", path });
+    else void openFile(path);
+  };
 
   // Problems: every marker Monaco holds for this workbench's models.
   const [markers, setMarkers] = useState<MonacoApi.editor.IMarker[]>([]);
@@ -558,6 +568,13 @@ export function Workbench({
       { id: "panel", label: "View: Toggle Panel", run: () => setPanel((p) => (p === null ? "output" : null)) },
       { id: "minimap", label: "View: Toggle Minimap", run: () => updateSetting("minimap", !settings.minimap) },
       { id: "settings", label: "Preferences: Open Settings", run: () => setView("settings") },
+      { id: "agents", label: "View: Agent Network", run: () => dispatch({ type: "open", path: AGENTS_TAB }) },
+      { id: "reopen", label: "View: Reopen Closed Editor", run: reopenClosed },
+      { id: "closeOthers", label: "View: Close Other Editors in Group", run: () => activePath && dispatch({ type: "closeOthers", path: activePath, group: state.focused, keep: state.groups[state.focused]!.tabs.filter((p) => docs.isDirty(p)) }) },
+      { id: "closeAll", label: "View: Close All Editors in Group", run: () => dispatch({ type: "closeAll", group: state.focused, keep: state.groups[state.focused]!.tabs.filter((p) => docs.isDirty(p)) }) },
+      { id: "pin", label: "View: Pin / Unpin Editor", run: () => activePath && dispatch({ type: "togglePin", path: activePath, group: state.focused }) },
+      { id: "moveNext", label: "View: Move Editor into Next Group", run: () => dispatch({ type: "moveActive", delta: 1 }) },
+      { id: "movePrev", label: "View: Move Editor into Previous Group", run: () => dispatch({ type: "moveActive", delta: -1 }) },
       {
         id: "autosave",
         label: settings.autoSave === "off" ? "File: Turn On Auto Save" : "File: Turn Off Auto Save",
@@ -625,7 +642,7 @@ export function Workbench({
         setView("debug");
         if (activePath?.endsWith(".py")) void startDebugging(activePath);
       } else if (k === "F6" && debug.status === "running") void debug.step("pause");
-      else if (k === "F9" && activePath !== null && !activePath.startsWith("diff:")) {
+      else if (k === "F9" && activePath !== null && !isVirtualTab(activePath)) {
         const line = editors.current.get(state.focused)?.getPosition()?.lineNumber;
         if (line) debug.toggleBreakpoint(activePath, line);
       } else if (k === "F10" && debug.status === "stopped") void debug.step("next");
@@ -643,6 +660,23 @@ export function Workbench({
       return;
     }
     const mod = isMac ? event.metaKey : event.ctrlKey;
+    const inTerminal = Boolean((event.target as HTMLElement).closest?.(".xterm"));
+    // Editor tabs, as in VS Code: ⌃Tab cycles, ⌃⌘←/→ moves a tab between groups, ⌥⌘←/→ switches tabs.
+    let tabKey = true;
+    if (event.ctrlKey && event.key === "Tab") dispatch({ type: "cycle", delta: event.shiftKey ? -1 : 1 });
+    else if ((isMac ? event.ctrlKey && event.metaKey : event.ctrlKey && event.altKey) && (event.key === "ArrowRight" || event.key === "ArrowLeft"))
+      dispatch({ type: "moveActive", delta: event.key === "ArrowRight" ? 1 : -1 });
+    else if (mod && event.altKey && !event.ctrlKey && (event.key === "ArrowRight" || event.key === "ArrowLeft"))
+      dispatch({ type: "cycle", delta: event.key === "ArrowRight" ? 1 : -1 });
+    else if (mod && event.altKey && event.code === "KeyT" && activePath !== null) {
+      const group = state.groups[state.focused]!;
+      dispatch({ type: "closeOthers", path: activePath, group: state.focused, keep: group.tabs.filter((path) => docs.isDirty(path)) });
+    } else tabKey = false;
+    if (tabKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (mod && event.altKey && event.code === "KeyB") {
       setSideOpen((value) => !value);
       event.preventDefault();
@@ -659,6 +693,10 @@ export function Workbench({
     else if (key === "d" && event.shiftKey) setView("debug");
     else if (key === "p") setPalette("files");
     else if (key === "," && !event.shiftKey) setView("settings");
+    else if (key === "w" && !event.shiftKey && !inTerminal) activePath !== null && requestClose(activePath, state.focused);
+    else if (key === "t" && event.shiftKey) reopenClosed();
+    else if (key === "a" && event.shiftKey) dispatch({ type: "open", path: AGENTS_TAB });
+    else if (/^[1-4]$/.test(event.key) && !event.shiftKey) dispatch({ type: "focus", group: Number(event.key) - 1 });
     else if (key === "s" && !event.shiftKey) activePath && void save(activePath);
     else if (key === "\\") {
       // ⌘\ splits whatever has focus: the terminal or the editor.
@@ -736,6 +774,7 @@ export function Workbench({
   useEffect(() => {
     localStorage.setItem(`${sideKey}:open`, sideOpen ? "1" : "0");
   }, [sideKey, sideOpen]);
+  const [openRun, setOpenRun] = useState<string | null>(null);
   const openSide = (tab: SideTab) => {
     setSideTab(tab);
     setSideOpen(true);
@@ -898,6 +937,18 @@ export function Workbench({
             </button>
           ))}
           <span className="flex-1" />
+          <button
+            type="button"
+            title="Agent Network (⌘⇧A)"
+            aria-label="Agent Network"
+            aria-pressed={activePath === AGENTS_TAB}
+            className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+            onClick={() => dispatch({ type: "open", path: AGENTS_TAB })}
+          >
+            <span className="flex" style={{ color: activePath === AGENTS_TAB ? hues.yellow : undefined }}>
+              <Icon name="Target" className="size-5" />
+            </span>
+          </button>
           {(
             [
               ["chat", "MessageSquare", "Chat", hues.blue],
@@ -1006,6 +1057,27 @@ export function Workbench({
                         requestClose={requestClose}
                         onGutterClick={(path, line) => debug.toggleBreakpoint(path, line)}
                         welcome={index === 0 ? <Welcome mood={mood} onChat={() => openSide("chat")} /> : undefined}
+                        groupCount={state.groups.length}
+                        renderView={(key) =>
+                          key === AGENTS_TAB && resolved !== null ? (
+                            <AgentNetwork
+                              scope={scope}
+                              workspace={resolved}
+                              onOpenThread={(id) => {
+                                setChatThreadId(id);
+                                openSide("chat");
+                              }}
+                              onOpenRun={(id) => {
+                                setOpenRun(id);
+                                openSide("workflows");
+                              }}
+                            />
+                          ) : null
+                        }
+                        onDropFile={(path, where) => {
+                          dispatch({ type: "focus", group: index });
+                          void openFile(path, where === "side");
+                        }}
                       />
                     </GroupSlot>
                   ))}
@@ -1051,6 +1123,8 @@ export function Workbench({
                   chatThreadId={chatThreadId}
                   setChatThreadId={setChatThreadId}
                   workflowFiles={workflowFiles}
+                  openRun={openRun}
+                  setOpenRun={setOpenRun}
                   onClose={() => setSideOpen(false)}
                   log={log}
                 />
@@ -1129,7 +1203,7 @@ export function Workbench({
           searchText={searchText}
           onOpenFile={(path) => void openFile(path)}
           onOpenAt={(path, line, column, length) => void openAt(path, line, column, length)}
-          onGotoLine={(line, column) => activePath !== null && !activePath.startsWith("diff:") && void openAt(activePath, line, column)}
+          onGotoLine={(line, column) => activePath !== null && !isVirtualTab(activePath) && void openAt(activePath, line, column)}
           onClose={() => setPalette(null)}
         />
       ) : null}
@@ -1226,10 +1300,10 @@ function SideBar({
               {openEditors.map((path) => (
                 <li key={path}>
                   <button type="button" title={path} className="flex w-full items-center gap-1 truncate px-3 py-0.5 text-left hover:bg-muted" onClick={() => onOpen(path)}>
-                    <FileIcon path={path} className="size-3.5" />
-                    <span className="truncate">{path.split("/").pop()}</span>
+                    {path === AGENTS_TAB ? <KodaIcon className="size-3.5" /> : <FileIcon path={path} className="size-3.5" />}
+                    <span className="truncate">{path === AGENTS_TAB ? "Agent Network" : path.split("/").pop()}</span>
                     {isDirty(path) ? <span className="size-1.5 shrink-0 rounded-full bg-foreground" /> : null}
-                    <span className="truncate text-xs text-muted-foreground">{path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""}</span>
+                    <span className="truncate text-xs text-muted-foreground">{!isVirtualTab(path) && path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""}</span>
                   </button>
                 </li>
               ))}

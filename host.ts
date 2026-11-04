@@ -12,6 +12,7 @@ import { formatFile } from "./lib/format.js";
 import { resolveWithinRoot } from "./lib/paths.js";
 import * as gitOps from "./lib/git-ops.js";
 import { runWorkflowCommand } from "./lib/workflows.js";
+import { discoverMcpServers } from "./lib/mcp-servers.js";
 import { resolvePythonDebugger } from "./lib/debug-adapter.js";
 import { findBinary } from "./lib/lsp-host.js";
 import { discoverPythonEnvs } from "./lib/python-envs.js";
@@ -72,6 +73,7 @@ export default experimental_defineHostEntry({
     workflows: async ({ root, context, request }) => ({ result: await runWorkflowCommand(root, context, request) }),
 
     pythonEnvs: async ({ root }) => ({ envs: await discoverPythonEnvs(root) }),
+    mcpServers: async ({ root }) => ({ servers: await discoverMcpServers(root) }),
 
     gitStatus: async ({ root }, context) => {
       const result = await run("git", ["status", "--porcelain=v1", "-z", "-b", "--untracked-files=all"], {

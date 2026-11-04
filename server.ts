@@ -209,6 +209,11 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: z.object({ result: z.unknown() }),
   },
+  /** MCP servers the workspace's agents can reach: names and transports only. */
+  mcpServers: {
+    input: z.object({ scope: scopeSchema }).strict(),
+    output: hostContract.mcpServers.output,
+  },
   /** Python environments for this workspace, and the one in use (saved per workspace). */
   pythonEnvs: {
     input: z.object({ scope: scopeSchema }).strict(),
@@ -629,6 +634,11 @@ export default async function plugin(bb: BbPluginApi) {
         { root: resolved.root, context: { projectId: resolved.projectId, environmentId: resolved.environmentId, threadId: thread }, request },
         { hostId: resolved.hostId },
       );
+    },
+
+    async mcpServers({ scope }) {
+      const resolved = await target(scope);
+      return host.call("mcpServers", { root: resolved.root }, { hostId: resolved.hostId });
     },
 
     async pythonEnvs({ scope }) {

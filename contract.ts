@@ -143,6 +143,20 @@ export const hostContract = defineRpcContract({
       .strict(),
     output: z.object({ result: z.unknown() }),
   },
+  mcpServers: {
+    experimental_retryable: true,
+    input: rootInput,
+    output: z.object({
+      servers: z.array(
+        z.object({
+          name: z.string(),
+          source: z.enum(["claude", "project", "codex", "plugin"]),
+          transport: z.enum(["stdio", "http", "sse"]),
+          plugin: z.string().nullable(),
+        }),
+      ),
+    }),
+  },
   pythonEnvs: {
     experimental_retryable: true,
     input: rootInput,

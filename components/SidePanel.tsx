@@ -36,6 +36,8 @@ export function SidePanel({
   chatThreadId,
   setChatThreadId,
   workflowFiles,
+  openRun,
+  setOpenRun,
   onClose,
   log,
 }: {
@@ -47,12 +49,13 @@ export function SidePanel({
   setChatThreadId(id: string | null): void;
   /** Named workflows found under .bb/workflows/. */
   workflowFiles: string[];
+  /** The run whose agent graph is open; owned by the workbench so the Agent Network can open one. */
+  openRun: string | null;
+  setOpenRun(id: string | null): void;
   onClose(): void;
   log(line: string): void;
 }) {
   const hues = useHues();
-  // The open run graph survives a trip to Chat (clicking an agent) and back.
-  const [openRun, setOpenRun] = useState<string | null>(null);
   const tabs: { id: SideTab; label: string; icon: string; hue: string }[] = [
     { id: "chat", label: "Chat", icon: "MessageSquare", hue: hues.blue },
     { id: "threads", label: "Threads", icon: "ListTodo", hue: hues.magenta },

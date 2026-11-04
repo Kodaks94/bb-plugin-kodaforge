@@ -67,6 +67,26 @@ The Tasks view (play icon) lists Makefile targets, with their `## help` text, an
 package.json scripts, at the root and up to two folders down. ▶ runs one in a terminal; click
 a name to open its definition.
 
+## Tabs and splits
+
+Drag a tab to reorder it, onto another group to move it (⌥ to copy), or onto an editor's
+left or right edge to split. Right-click a tab for close, pin and move commands.
+
+| Keys | Action |
+| --- | --- |
+| ⌘W / ⌘⇧T | Close tab / reopen closed tab |
+| ⌥⌘T | Close other tabs |
+| ⌃Tab, ⌥⌘← → | Previous / next tab |
+| ⌃⌘← → | Move tab to the previous / next group |
+| ⌘\\ / ⌘1–4 | Split / focus a group |
+
+## Agent Network
+
+⌘⇧A (or the target icon) opens this project's agents as a solar system around Koda:
+working agents close in, idle ones further out, sub-agents as moons, workflow runs as
+ringed planets, and MCP servers on the outer belt. Click anything to open it. MCP servers
+are read from the agents' configs by name only; commands, URLs and env never leave the host.
+
 ## Settings
 
 ⌘, (or the gear) opens Settings: auto save, format on save, whitespace fixes, editor font
@@ -147,7 +167,7 @@ light and dark themes:
 **Editor (phase 1)**
 - Monaco, loaded only when the IDE opens, with syntax colours for ~80 languages and BB's
   current code theme (light and dark).
-- Tabs with dirty markers and up to three side-by-side groups (⌘\\). A file open in two
+- Tabs with dirty markers and up to four side-by-side groups (⌘\\). A file open in two
   groups shares one buffer.
 - ⌘S saves with compare-and-swap on the file's SHA-256. If the file changed on disk since
   you opened it (an agent edited it, say), the save stops and a banner offers **Reload** or
