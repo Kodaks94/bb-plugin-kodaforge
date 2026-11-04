@@ -20,7 +20,7 @@ export function EditorGroup({
   group,
   index,
   focused,
-  minimap,
+  options,
   dispatch,
   onEditor,
   onCursor,
@@ -34,7 +34,8 @@ export function EditorGroup({
   group: Group;
   index: number;
   focused: boolean;
-  minimap: boolean;
+  /** Editor options from Settings (font, wrap, minimap…). */
+  options: MonacoApi.editor.IEditorOptions;
   dispatch(action: EditorAction): void;
   onEditor(index: number, editor: Editor | null): void;
   onCursor(position: { line: number; column: number } | null): void;
@@ -54,10 +55,8 @@ export function EditorGroup({
     const instance = monaco.editor.create(host.current!, {
       model: null,
       automaticLayout: true,
-      fontSize: 13,
-      minimap: { enabled: minimap },
+      ...options,
       scrollBeyondLastLine: false,
-      renderWhitespace: "selection",
       fixedOverflowWidgets: true,
       glyphMargin: true,
     });
@@ -97,9 +96,11 @@ export function EditorGroup({
     onEditor(index, editor.current);
   }, [index, onEditor]);
 
+  const optionsKey = JSON.stringify(options);
   useEffect(() => {
-    editor.current?.updateOptions({ minimap: { enabled: minimap } });
-  }, [minimap]);
+    editor.current?.updateOptions(options);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [optionsKey]);
 
   const active = group.active;
   const diff = active === null ? null : parseDiffKey(active);

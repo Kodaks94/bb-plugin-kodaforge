@@ -67,6 +67,18 @@ The Tasks view (play icon) lists Makefile targets, with their `## help` text, an
 package.json scripts, at the root and up to two folders down. ▶ runs one in a terminal; click
 a name to open its definition.
 
+## Settings
+
+⌘, (or the gear) opens Settings: auto save, format on save, whitespace fixes, editor font
+and layout, cursor, and terminal options, with a search box. A delayed auto save skips
+formatting and trimming, as in VS Code, so text doesn't move while you type.
+
+## Workflow agent graph
+
+In the Workflows panel, click a run to see its agents as a vertical graph, phase by phase,
+with each agent's model, time and status. It updates live; click an agent to open its
+thread.
+
 ## Several projects at once
 
 Open as many workspaces as you like (project checkouts, worktrees, thread workspaces) as

@@ -11,6 +11,8 @@ import { experimental_useCodeTheme, useSdk } from "@get-bb/plugin-sdk/app";
 import type { ResolvedScope } from "../server";
 import { Icon } from "@/components/ui/icon";
 import { useHues } from "./colors";
+import { useSettings } from "./use-settings";
+import { parseSettings, SETTINGS_KEY } from "@/lib/settings";
 import { decodeBase64, encodeBase64, nextPollDelay, TITLE_PREFIX } from "@/lib/terminal-io";
 import {
   addTerminal,
@@ -52,6 +54,16 @@ export const TerminalPanel = forwardRef<
 >(function TerminalPanel({ workspace, visible, maximized, onToggleMaximize, log, activate }, ref) {
   const sdk = useSdk();
   const [sessions, setSessions] = useState<Session[] | null>(null);
+  // Terminal settings apply to running terminals too.
+  const { settings } = useSettings();
+  useEffect(() => {
+    for (const entry of live.values()) {
+      entry.terminal.options.fontSize = settings.terminalFontSize;
+      entry.terminal.options.cursorStyle = settings.terminalCursorStyle;
+      entry.terminal.options.cursorBlink = settings.terminalCursorBlink;
+      if (entry.visible) entry.fit.fit();
+    }
+  }, [settings.terminalFontSize, settings.terminalCursorStyle, settings.terminalCursorBlink, sessions]);
   const [layout, setLayout] = useState<TerminalLayout>(emptyLayout);
   const exitWaiters = useRef(new Map<string, (code: number | null) => void>());
   const storageKey = `kodaforge:terminals:${workspace.hostId}:${workspace.root}`;
@@ -327,10 +339,12 @@ function attachTerminal(sdk: ReturnType<typeof useSdk>, terminalId: string): Liv
 
   const holder = document.createElement("div");
   holder.style.cssText = "position:absolute;inset:0;padding:4px 8px 0 8px";
+  const settings = parseSettings(localStorage.getItem(SETTINGS_KEY));
   const terminal = new Terminal({
-    fontSize: 12,
+    fontSize: settings.terminalFontSize,
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    cursorBlink: true,
+    cursorStyle: settings.terminalCursorStyle,
+    cursorBlink: settings.terminalCursorBlink,
     scrollback: 10000,
   });
   const fit = new FitAddon();

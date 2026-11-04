@@ -1,6 +1,6 @@
 // KodaForge frontend: a full IDE page in the sidebar (any workspace) and a
 // KodaForge tab beside a thread, pinned to that thread's workspace.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   definePluginApp,
   useBbNavigate,
@@ -24,6 +24,28 @@ function parseScope(subPath: string): Scope | null {
 }
 
 const OPEN_KEY = "kodaforge:open-workspaces";
+
+// Which open workspaces have unsaved edits. Kept outside React state on purpose: a
+// state update in IdePage on the first keystroke rebuilt every workbench (and its
+// editors), so typing lost focus after one character. Only the tab strip listens.
+const dirtyWorkspaces = new Map<string, boolean>();
+const dirtyListeners = new Set<() => void>();
+let dirtySnapshot: Record<string, boolean> = {};
+function setWorkspaceDirty(key: string, value: boolean) {
+  if ((dirtyWorkspaces.get(key) ?? false) === value) return;
+  dirtyWorkspaces.set(key, value);
+  dirtySnapshot = Object.fromEntries(dirtyWorkspaces);
+  dirtyListeners.forEach((listener) => listener());
+}
+function useDirtyWorkspaces(): Record<string, boolean> {
+  return useSyncExternalStore(
+    (listener) => {
+      dirtyListeners.add(listener);
+      return () => dirtyListeners.delete(listener);
+    },
+    () => dirtySnapshot,
+  );
+}
 
 function IdePage({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc<typeof rpcContract>();
@@ -53,11 +75,10 @@ function IdePage({ subPath }: PluginNavPanelProps) {
   useEffect(() => {
     localStorage.setItem(OPEN_KEY, JSON.stringify(open));
   }, [open]);
-  const [dirty, setDirty] = useState<Record<string, boolean>>({});
 
   const go = (key: string) => navigate.toPluginPanel(PANEL_PATH, { subPath: key });
   const close = (key: string) => {
-    if (dirty[key] && !window.confirm(`${labelFor(key).title} has unsaved changes. Close it anyway?`)) return;
+    if (dirtySnapshot[key] && !window.confirm(`${labelFor(key).title} has unsaved changes. Close it anyway?`)) return;
     const next = closeTab(open, key, active ?? key);
     setOpen(next.list);
     if (key === active) go(next.active ?? "");
@@ -75,7 +96,6 @@ function IdePage({ subPath }: PluginNavPanelProps) {
     <WorkspaceTabs
       open={open}
       active={active}
-      dirty={dirty}
       labelFor={labelFor}
       groups={groupWorkspaces(workspaces ?? [])}
       onSelect={go}
@@ -102,7 +122,7 @@ function IdePage({ subPath }: PluginNavPanelProps) {
               scope={scope}
               header={tabs}
               active={key === active}
-              onDirtyChange={(value) => setDirty((current) => (current[key] === value ? current : { ...current, [key]: value }))}
+              onDirtyChange={(value) => setWorkspaceDirty(key, value)}
             />
           </div>
         );
@@ -123,7 +143,6 @@ function hueFor(projectId: string | null): string {
 function WorkspaceTabs({
   open,
   active,
-  dirty,
   labelFor,
   groups,
   onSelect,
@@ -131,12 +150,12 @@ function WorkspaceTabs({
 }: {
   open: string[];
   active: string | null;
-  dirty: Record<string, boolean>;
   labelFor(key: string): { title: string; detail: string; projectId: string | null; kind: string };
   groups: ReturnType<typeof groupWorkspaces<WorkspaceOption>>;
   onSelect(key: string): void;
   onClose(key: string): void;
 }) {
+  const dirty = useDirtyWorkspaces();
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {

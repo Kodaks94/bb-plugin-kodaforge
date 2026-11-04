@@ -136,6 +136,7 @@ export const hostContract = defineRpcContract({
         request: z.discriminatedUnion("action", [
           z.object({ action: z.literal("list") }),
           z.object({ action: z.literal("status"), runId: z.string().max(100) }),
+          z.object({ action: z.literal("history"), runId: z.string().max(100) }),
           z.object({ action: z.literal("run"), name: z.string().max(64), args: z.string().max(100_000).optional() }),
         ]),
       })

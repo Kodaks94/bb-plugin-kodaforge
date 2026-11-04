@@ -202,6 +202,7 @@ export const rpcContract = defineRpcContract({
         request: z.discriminatedUnion("action", [
           z.object({ action: z.literal("list") }),
           z.object({ action: z.literal("status"), runId: z.string().max(100) }),
+          z.object({ action: z.literal("history"), runId: z.string().max(100) }),
           z.object({ action: z.literal("run"), name: z.string().max(64), args: z.string().max(100_000).optional() }),
         ]),
       })
@@ -616,7 +617,12 @@ export default async function plugin(bb: BbPluginApi) {
 
     async workflows({ scope, threadId, request }) {
       const resolved = await resolveScope(scope);
-      const thread = threadId ?? (scope.kind === "thread" ? scope.id : null);
+      let thread = threadId ?? (scope.kind === "thread" ? scope.id : null);
+      // The CLI only runs in a thread's context. Reading runs doesn't need a chosen thread:
+      // any thread of the project will do. Starting one still needs the chat thread it reports to.
+      if (thread === null && request.action !== "run") {
+        thread = (await bb.sdk.threads.list({ projectId: resolved.projectId, limit: 1 }))[0]?.id ?? null;
+      }
       if (request.action === "run") bb.log.info(`workflow ${request.name} started from the IDE for ${thread}`);
       return host.call(
         "workflows",
