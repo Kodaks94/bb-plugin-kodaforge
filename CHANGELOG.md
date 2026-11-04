@@ -17,8 +17,8 @@ them from the `vX.Y.Z` tags.
   rescans every 30 s while shown.
 
 ### Changed
-- Koda wears sunglasses.
-- The Agent Network's activity-bar icon is an orbit instead of a target.
+- In the Agent Network, Koda (the sun) wears sunglasses. Everywhere else he looks as before.
+- The Agent Network's activity-bar icon is a Saturn instead of a target.
 
 ## [0.6.0] - 2026-11-04
 

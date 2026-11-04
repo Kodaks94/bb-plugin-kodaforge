@@ -555,7 +555,7 @@ function spriteImage(mood: "working" | "sleepy"): HTMLCanvasElement {
   canvas.width = 16;
   canvas.height = 16;
   const ctx = canvas.getContext("2d")!;
-  for (const run of spriteRuns(spriteFor(mood))) {
+  for (const run of spriteRuns(spriteFor(mood, { sunglasses: true }))) {
     ctx.fillStyle = run.color;
     ctx.fillRect(run.x, run.y, run.w, 1);
   }

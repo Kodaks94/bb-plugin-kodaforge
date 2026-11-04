@@ -82,7 +82,7 @@ left or right edge to split. Right-click a tab for close, pin and move commands.
 
 ## Agent Network
 
-⌘⇧A (or the orbit icon) opens the Agent Network, a solar system around Koda, in two modes:
+⌘⇧A (or the Saturn icon) opens the Agent Network, a solar system around Koda, in two modes:
 
 - **Coding:** the agents working on this project. Working agents close in, idle ones further
   out, sub-agents as moons, workflow runs as ringed planets, and MCP servers on the outer

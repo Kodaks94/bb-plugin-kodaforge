@@ -28,3 +28,8 @@ it("picks the mood by priority", () => {
   expect(moodFor({ ...calm, errors: 2, celebrating: true })).toBe("happy");
   expect(moodFor({ ...calm, idleMs: 4 * 60_000 })).toBe("sleepy");
 });
+
+it("wears sunglasses only when asked (the Agent Network's sun)", () => {
+  expect(spriteFor("idle").join("")).not.toContain("g");
+  expect(spriteFor("idle", { sunglasses: true }).join("")).toContain("g");
+});

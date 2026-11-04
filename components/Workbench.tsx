@@ -42,6 +42,7 @@ import { cleanupOnSave, editorOptions } from "@/lib/settings";
 import { useSettings } from "./use-settings";
 import { SettingsView } from "./SettingsView";
 import { AgentNetwork } from "./AgentNetwork";
+import { SaturnIcon } from "./SaturnIcon";
 
 type Editor = MonacoApi.editor.IStandaloneCodeEditor;
 type View = "explorer" | "search" | "scm" | "debug" | "tasks" | "problems" | "settings";
@@ -946,7 +947,7 @@ export function Workbench({
             onClick={() => dispatch({ type: "open", path: AGENTS_TAB })}
           >
             <span className="flex" style={{ color: activePath === AGENTS_TAB ? hues.yellow : undefined }}>
-              <Icon name="Orbit" fallback="Sparkles" className="size-5" />
+              <SaturnIcon className="size-5" />
             </span>
           </button>
           {(

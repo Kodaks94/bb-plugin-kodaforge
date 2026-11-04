@@ -1,5 +1,5 @@
 // Koda, KodaForge's bear cub, as a 16×14 pixel grid. Each mood swaps the eye and
-// mouth pixels; everything else is shared. Koda always wears sunglasses, drawn over the eyes.
+// mouth pixels; everything else is shared. In the Agent Network Koda wears sunglasses over the eyes.
 
 export type Mood = "idle" | "blink" | "working" | "happy" | "worried" | "sleepy";
 
@@ -74,10 +74,10 @@ const FACES: Record<Mood, { eyes: keyof typeof EYES; mouth: keyof typeof MOUTH }
   sleepy: { eyes: "closed", mouth: "o" },
 };
 
-export function spriteFor(mood: Mood): string[] {
+export function spriteFor(mood: Mood, { sunglasses = false }: { sunglasses?: boolean } = {}): string[] {
   const grid = BASE.map((row) => row.split(""));
   const face = FACES[mood];
-  for (const [row, col, color] of [...EYES[face.eyes], ...SUNGLASSES, ...MOUTH[face.mouth], ...(EXTRAS[mood] ?? [])]) {
+  for (const [row, col, color] of [...EYES[face.eyes], ...(sunglasses ? SUNGLASSES : []), ...MOUTH[face.mouth], ...(EXTRAS[mood] ?? [])]) {
     grid[row]![col] = color;
   }
   return grid.map((row) => row.join(""));
