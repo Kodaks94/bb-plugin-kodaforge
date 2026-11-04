@@ -3,6 +3,25 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [0.5.0] - 2026-11-04
+
+### Added
+- **Agent graph for workflow runs.** Click a run in the Workflows panel to see it as a
+  vertical graph: start, each phase in order, every agent with its model and time, then the
+  result. Running phases animate, partly failed phases turn amber, and clicking an agent
+  opens the thread it worked in. Updates live while the run is going.
+- **Settings (⌘,).** A searchable Settings view with VS Code's most-changed preferences:
+  auto save (after a delay or when focus leaves the editor), format on save, trim trailing
+  whitespace, final newline, font, size and ligatures, tab size, word wrap, line numbers,
+  minimap, sticky scroll, bracket colours, whitespace, cursor, and terminal font and cursor.
+  Changes apply at once to every open workspace.
+
+### Fixed
+- Typing in the editor lost focus after the first character in the KodaForge page: marking
+  the workspace tab "unsaved" re-rendered every workbench.
+- The Workflows panel needed a chat thread picked before it could list runs.
+- A sidebar view saved by a newer version no longer crashes an older one.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added
@@ -71,6 +90,7 @@ them from the `vX.Y.Z` tags.
 - Agent chat, threads and workflows in a right-hand panel.
 - Koda the bear, and colour coding from the BB theme.
 
+[0.5.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.1...v0.2.2

@@ -38,9 +38,12 @@ import { SearchEverywhere, type TextHit } from "./SearchEverywhere";
 import { taskArgv, type Task } from "@/lib/tasks";
 import type { Hue } from "@/lib/file-colors";
 import { remapPath } from "@/lib/editor-state";
+import { cleanupOnSave, editorOptions } from "@/lib/settings";
+import { useSettings } from "./use-settings";
+import { SettingsView } from "./SettingsView";
 
 type Editor = MonacoApi.editor.IStandaloneCodeEditor;
-type View = "explorer" | "search" | "scm" | "debug" | "tasks" | "problems";
+type View = "explorer" | "search" | "scm" | "debug" | "tasks" | "problems" | "settings";
 type PanelTab = "terminal" | "debug" | "problems" | "output";
 
 // A plain object, not defineRpcContract(): the app bundle may only import the SDK's /app entry at runtime.
@@ -64,6 +67,7 @@ const VIEWS: { id: View; icon: string; label: string; keys: string; hue: Hue }[]
   { id: "debug", icon: "Bug", label: "Run and Debug", keys: "⌘⇧D", hue: "red" },
   { id: "tasks", icon: "Play", label: "Tasks (Makefile, npm scripts)", keys: "", hue: "green" },
   { id: "problems", icon: "AlertTriangle", label: "Problems", keys: "", hue: "red" },
+  { id: "settings", icon: "Settings", label: "Settings", keys: "⌘,", hue: "magenta" },
 ];
 
 /** Browser surfaces the design has to own too: scrollbars and selection, from BB's theme variables. */
@@ -154,7 +158,6 @@ export function Workbench({
     view?: View | null;
     panel?: PanelTab | null;
     panelMax?: boolean;
-    minimap?: boolean;
     groups?: { tabs: string[]; active: string | null }[];
     focused?: number;
   }>(
@@ -182,33 +185,96 @@ export function Workbench({
   const lsp = useLanguageServers(monaco, docs, scope, resolved?.root ?? null, log, pyEnv?.python ?? null);
   const debug = useDebugger(scope, resolved?.root ?? null, log, pyEnv?.python ?? null);
 
-  /** ⌘S: format with ruff/prettier when available, then the hash-guarded save. */
+  const { settings, update: updateSetting } = useSettings();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  /**
+   * ⌘S: whitespace fixes and format (per settings), then the hash-guarded save.
+   * A delayed auto save skips both, as VS Code does: rewriting text mid-typing moves the cursor.
+   */
   const save = useCallback(
-    async (path: string) => {
+    async (path: string, auto: "delay" | "focus" | null = null) => {
       const model = docs.model(path);
       const meta = docs.meta(path);
       if (model === null || meta === null || meta.readOnly) return;
-      try {
-        const before = model.getValue();
-        const formatted = await rpc.call("format", { scope, path, content: before });
-        if (formatted.status === "formatted" && formatted.content !== before && model.getValue() === before) {
-          model.pushEditOperations([], [{ range: model.getFullModelRange(), text: formatted.content }], () => null);
-        } else if (formatted.status === "failed") {
-          log(`Format skipped for ${path}: ${formatted.reason}`);
-        } else if (formatted.status === "unavailable") {
-          log(`Format skipped: ${formatted.reason}`);
+      const options = settingsRef.current;
+      if (auto !== "delay") {
+        const cleaned = cleanupOnSave(model.getValue(), options);
+        if (cleaned !== model.getValue()) model.pushEditOperations([], [{ range: model.getFullModelRange(), text: cleaned }], () => null);
+      }
+      if (auto !== "delay" && options.formatOnSave) {
+        try {
+          const before = model.getValue();
+          const formatted = await rpc.call("format", { scope, path, content: before });
+          if (formatted.status === "formatted" && formatted.content !== before && model.getValue() === before) {
+            model.pushEditOperations([], [{ range: model.getFullModelRange(), text: formatted.content }], () => null);
+          } else if (formatted.status === "failed") {
+            log(`Format skipped for ${path}: ${formatted.reason}`);
+          } else if (formatted.status === "unavailable") {
+            log(`Format skipped: ${formatted.reason}`);
+          }
+        } catch (error) {
+          log(`Format skipped for ${path}: ${(error as Error).message}`);
         }
-      } catch (error) {
-        log(`Format skipped for ${path}: ${(error as Error).message}`);
       }
       await docs.save(path);
       notifySaved(path);
     },
     [docs, rpc, scope, log],
   );
-  const [view, setView] = useState<View | null>(savedLayout.view === undefined ? "explorer" : savedLayout.view);
+  // Auto save, like VS Code's files.autoSave. Refs keep the timers alive across re-renders.
+  const docsRef = useRef(docs);
+  docsRef.current = docs;
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    if (monaco === null || settings.autoSave === "off") return;
+    const saveIfDirty = (path: string, auto: "delay" | "focus") => {
+      if (docsRef.current.isDirty(path)) void saveRef.current(path, auto);
+    };
+    if (settings.autoSave === "onFocusChange") {
+      const saveAll = () => docsRef.current.paths().forEach((path) => saveIfDirty(path, "focus"));
+      // Monaco's own blur event: every editor, including ones created later.
+      const watchEditor = (editor: MonacoApi.editor.ICodeEditor) => editor.onDidBlurEditorText(saveAll);
+      const subscriptions = monaco.editor.getEditors().map(watchEditor);
+      subscriptions.push(monaco.editor.onDidCreateEditor(watchEditor));
+      window.addEventListener("blur", saveAll);
+      return () => {
+        subscriptions.forEach((subscription) => subscription.dispose());
+        window.removeEventListener("blur", saveAll);
+      };
+    }
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const watch = (model: MonacoApi.editor.ITextModel) =>
+      model.onDidChangeContent(() => {
+        const path = docsRef.current.pathOf(model.uri);
+        if (path === null) return;
+        clearTimeout(timers.get(path));
+        timers.set(path, setTimeout(() => saveIfDirty(path, "delay"), settings.autoSaveDelay));
+      });
+    const subscriptions = monaco.editor.getModels().map(watch);
+    subscriptions.push(monaco.editor.onDidCreateModel(watch));
+    return () => {
+      subscriptions.forEach((subscription) => subscription.dispose());
+      timers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [monaco, settings.autoSave, settings.autoSaveDelay]);
+
+  // Indentation settings apply to every open file and each one opened later.
+  useEffect(() => {
+    if (monaco === null) return;
+    const apply = (model: MonacoApi.editor.ITextModel) => model.updateOptions({ tabSize: settings.tabSize, insertSpaces: settings.insertSpaces });
+    monaco.editor.getModels().forEach(apply);
+    const subscription = monaco.editor.onDidCreateModel(apply);
+    return () => subscription.dispose();
+  }, [monaco, settings.tabSize, settings.insertSpaces]);
+
+  // A view saved by a newer KodaForge (or a typo) falls back to the Explorer instead of crashing.
+  const [view, setView] = useState<View | null>(
+    savedLayout.view === undefined || (savedLayout.view !== null && !VIEWS.some((entry) => entry.id === savedLayout.view)) ? "explorer" : savedLayout.view,
+  );
   const [panel, setPanel] = useState<PanelTab | null>(savedLayout.panel ?? null);
-  const [minimap, setMinimap] = useState(savedLayout.minimap ?? true);
   const [panelMax, setPanelMax] = useState(savedLayout.panelMax ?? false);
   const terminalRef = useRef<TerminalApi | null>(null);
   /** Open the terminal panel and hand back its API once it has mounted. */
@@ -363,12 +429,11 @@ export function Workbench({
         view,
         panel,
         panelMax,
-        minimap,
         groups: state.groups.map((group) => ({ tabs: group.tabs, active: group.active })),
         focused: state.focused,
       }),
     );
-  }, [layoutKey, view, panel, panelMax, minimap, state]);
+  }, [layoutKey, view, panel, panelMax, state]);
 
   const focusedGroup = state.groups[state.focused];
   const activePath = focusedGroup?.active ?? null;
@@ -491,7 +556,13 @@ export function Workbench({
       { id: "split", label: "View: Split Editor Right", run: () => dispatch({ type: "split" }) },
       { id: "sidebar", label: "View: Toggle Side Bar", run: () => setView((v) => (v === null ? "explorer" : null)) },
       { id: "panel", label: "View: Toggle Panel", run: () => setPanel((p) => (p === null ? "output" : null)) },
-      { id: "minimap", label: "View: Toggle Minimap", run: () => setMinimap((m) => !m) },
+      { id: "minimap", label: "View: Toggle Minimap", run: () => updateSetting("minimap", !settings.minimap) },
+      { id: "settings", label: "Preferences: Open Settings", run: () => setView("settings") },
+      {
+        id: "autosave",
+        label: settings.autoSave === "off" ? "File: Turn On Auto Save" : "File: Turn Off Auto Save",
+        run: () => updateSetting("autoSave", settings.autoSave === "off" ? "afterDelay" : "off"),
+      },
       { id: "output", label: "View: Show Output", run: () => setPanel("output") },
       { id: "terminal", label: "View: Toggle Terminal", run: () => setPanel((p) => (p === "terminal" ? null : "terminal")) },
       { id: "terminalNew", label: "Terminal: Create New Terminal", run: () => void terminalApi().then((api) => api?.newTerminal()) },
@@ -587,6 +658,7 @@ export function Workbench({
     else if (key === "e" && event.shiftKey) setView("explorer");
     else if (key === "d" && event.shiftKey) setView("debug");
     else if (key === "p") setPalette("files");
+    else if (key === "," && !event.shiftKey) setView("settings");
     else if (key === "s" && !event.shiftKey) activePath && void save(activePath);
     else if (key === "\\") {
       // ⌘\ splits whatever has focus: the terminal or the editor.
@@ -865,6 +937,7 @@ export function Workbench({
                       log={log}
                     />
                   }
+                  settingsView={<SettingsView />}
                   tasksView={
                     <TasksView
                       scope={scope}
@@ -926,7 +999,7 @@ export function Workbench({
                         group={group}
                         index={index}
                         focused={index === state.focused}
-                        minimap={minimap}
+                        options={editorOptions(settings)}
                         dispatch={dispatch}
                         onEditor={onEditor}
                         onCursor={setCursor}
@@ -1113,6 +1186,7 @@ function useRealtimeChanges(root: string | null, onChange: () => void) {
 }
 
 function SideBar({
+  settingsView,
   tasksView,
   debugView,
   explorer,
@@ -1126,6 +1200,7 @@ function SideBar({
   markers,
   onReveal,
 }: {
+  settingsView: ReactNode;
   tasksView: ReactNode;
   debugView: ReactNode;
   explorer: ReactNode;
@@ -1165,6 +1240,8 @@ function SideBar({
           search
         ) : view === "tasks" ? (
           tasksView
+        ) : view === "settings" ? (
+          settingsView
         ) : view === "debug" ? (
           debugView
         ) : view === "scm" ? (

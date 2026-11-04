@@ -14,6 +14,7 @@ import {
 import type { ResolvedScope, rpcContract, Scope } from "../server";
 import { Icon } from "@/components/ui/icon";
 import { useHues } from "./colors";
+import { RunGraph } from "./RunGraph";
 
 export type SideTab = "chat" | "threads" | "workflows";
 
@@ -50,6 +51,8 @@ export function SidePanel({
   log(line: string): void;
 }) {
   const hues = useHues();
+  // The open run graph survives a trip to Chat (clicking an agent) and back.
+  const [openRun, setOpenRun] = useState<string | null>(null);
   const tabs: { id: SideTab; label: string; icon: string; hue: string }[] = [
     { id: "chat", label: "Chat", icon: "MessageSquare", hue: hues.blue },
     { id: "threads", label: "Threads", icon: "ListTodo", hue: hues.magenta },
@@ -97,7 +100,18 @@ export function SidePanel({
             }}
           />
         ) : (
-          <WorkflowsTab scope={scope} threadId={chatThreadId} files={workflowFiles} log={log} />
+          <WorkflowsTab
+            scope={scope}
+            threadId={chatThreadId}
+            files={workflowFiles}
+            log={log}
+            open={openRun}
+            setOpen={setOpenRun}
+            onOpenThread={(id) => {
+              setChatThreadId(id);
+              setTab("chat");
+            }}
+          />
         )}
       </div>
     </div>
@@ -223,13 +237,27 @@ function ThreadsTab({
   );
 }
 
-function WorkflowsTab({ scope, threadId, files, log }: { scope: Scope; threadId: string | null; files: string[]; log(line: string): void }) {
+function WorkflowsTab({
+  scope,
+  threadId,
+  files,
+  log,
+  open,
+  setOpen,
+  onOpenThread,
+}: {
+  scope: Scope;
+  threadId: string | null;
+  files: string[];
+  log(line: string): void;
+  open: string | null;
+  setOpen(id: string | null): void;
+  onOpenThread(id: string): void;
+}) {
   const rpc = useRpc<typeof rpcContract>();
   const hues = useHues();
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
-  const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const origin = threadId ?? (scope.kind === "thread" ? scope.id : null);
 
   useEffect(() => {
@@ -251,14 +279,6 @@ function WorkflowsTab({ scope, threadId, files, log }: { scope: Scope; threadId:
     };
   }, [rpc, scope, origin]);
 
-  useEffect(() => {
-    if (open === null) return setDetail(null);
-    rpc.call("workflows", { scope, threadId: origin, request: { action: "status", runId: open } }).then(
-      ({ result }) => setDetail(result as Record<string, unknown>),
-      (cause: Error) => setDetail({ error: cause.message }),
-    );
-  }, [open, rpc, scope, origin, runs]);
-
   const statusHue = (status: string) =>
     status === "succeeded" ? hues.green : status === "failed" ? hues.red : status === "running" ? hues.blue : status === "cancelled" ? hues.muted : hues.yellow;
 
@@ -273,6 +293,10 @@ function WorkflowsTab({ scope, threadId, files, log }: { scope: Scope; threadId:
       },
     );
   };
+
+  if (open !== null) {
+    return <RunGraph scope={scope} threadId={origin} runId={open} onBack={() => setOpen(null)} onOpenThread={onOpenThread} />;
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col text-[13px]">
@@ -310,9 +334,9 @@ function WorkflowsTab({ scope, threadId, files, log }: { scope: Scope; threadId:
           <li key={run.id}>
             <button
               type="button"
-              aria-expanded={open === run.id}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted"
-              onClick={() => setOpen((current) => (current === run.id ? null : run.id))}
+              title="Show the agent graph"
+              className="group flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted"
+              onClick={() => setOpen(run.id)}
             >
               <span className="size-2 shrink-0 rounded-full" style={{ background: statusHue(run.status) }} />
               <span className="min-w-0 flex-1">
@@ -322,29 +346,11 @@ function WorkflowsTab({ scope, threadId, files, log }: { scope: Scope; threadId:
                   {run.phase ? ` · ${run.phase}` : ""} · {relativeTime(run.createdAt)}
                 </span>
               </span>
+              <Icon name="ChevronRight" className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
             </button>
-            {open === run.id ? <RunDetail detail={detail} /> : null}
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function RunDetail({ detail }: { detail: Record<string, unknown> | null }) {
-  if (detail === null) return <p className="px-6 pb-2 text-xs text-muted-foreground">Loading…</p>;
-  const calls = detail.calls as Record<string, number> | undefined;
-  const result = detail.result ?? detail.error;
-  return (
-    <div className="mx-3 mb-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs">
-      {calls ? (
-        <p className="text-muted-foreground">
-          {calls.total} agent call{calls.total === 1 ? "" : "s"}: {calls.succeeded} done, {calls.running} running, {calls.failed} failed
-        </p>
-      ) : null}
-      {result !== undefined && result !== null ? (
-        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px]">{JSON.stringify(result, null, 2)}</pre>
-      ) : null}
     </div>
   );
 }
