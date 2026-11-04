@@ -10,6 +10,35 @@
 
 <sub>20 seconds, sound on: click the image to play. Your agents code in BB. Now you can too.</sub>
 
+## Everything it does
+
+| | |
+| --- | --- |
+| **Code editor** | Monaco with tabs, up to four split editor groups, minimap, find and replace, and saves that never overwrite an agent's edit |
+| **Search everything (⌘P)** | Files, symbols, text in files and commands from one box; find in files and search and replace with a preview (⌘⇧F) |
+| **Language servers (LSP)** | Python (pyright, basedpyright) and TypeScript/JavaScript: completion, hover, go to definition, find references, rename, problems, format on save |
+| **Run and debug Python** | Breakpoints, stepping, variables, call stack and a debug console, with debugpy |
+| **Python environments** | venv, uv, Poetry, conda and pyenv interpreters, used by the language server, debugger, terminals and tasks |
+| **Tasks** | Makefile targets and npm/package.json scripts, one click to run |
+| **Terminals** | Split terminals that keep running and reattach after you leave or restart |
+| **Source control (git)** | Stage, diff, commit, stash, pull, push and switch branches |
+| **Explorer** | File tree with git colours, drag to move, rename and delete, Material Icon Theme file icons |
+| **Agents beside your code** | Agent chat, the project's threads and workflow runs in a right-hand panel (⌘⌥B), plus a workflow agent graph |
+| **Agent Network (⌘⇧A)** | The agents, workflow runs and MCP servers working on your project, and in **App** mode the AI architecture your code builds |
+| **Several projects at once** | One tab per workspace (checkouts, worktrees, thread workspaces); switching keeps files, terminals and the debugger alive |
+| **Koda** | A pixel bear cub who works, cheers after saves and commits, sweats over errors, and naps when you're idle |
+
+![KodaForge: the explorer and a Python file in the editor](docs/images/editor.jpg)
+
+**Agent Network, App mode:** the agents, tools, MCP servers, models and skills that the code
+defines, here a small email-triage app. Click anything to open its code.
+
+![Agent Network in App mode, mapping an email-triage app's agents, tools and MCP server](docs/images/agent-network-app.jpg)
+
+**Agent Network, Coding mode:** the threads, workflow runs and MCP servers working on the project.
+
+![Agent Network in Coding mode, with threads, a workflow run and MCP servers orbiting Koda](docs/images/agent-network-coding.jpg)
+
 ## Install in BB
 
 The quickest way is one command, pinned to the 0.x releases so updates arrive without breaking changes:
@@ -66,6 +95,35 @@ Only an interpreter KodaForge itself found can be selected.
 The Tasks view (play icon) lists Makefile targets, with their `## help` text, and
 package.json scripts, at the root and up to two folders down. ▶ runs one in a terminal; click
 a name to open its definition.
+
+## Tabs and splits
+
+Drag a tab to reorder it, onto another group to move it (⌥ to copy), or onto an editor's
+left or right edge to split. Right-click a tab for close, pin and move commands.
+
+| Keys | Action |
+| --- | --- |
+| ⌘W / ⌘⇧T | Close tab / reopen closed tab |
+| ⌥⌘T | Close other tabs |
+| ⌃Tab, ⌥⌘← → | Previous / next tab |
+| ⌃⌘← → | Move tab to the previous / next group |
+| ⌘\\ / ⌘1–4 | Split / focus a group |
+
+## Agent Network
+
+⌘⇧A (or the Saturn icon; hover any activity-bar icon for its name) opens the Agent Network, a solar system around Koda, in two modes:
+
+- **Coding:** the agents working on this project. Working agents close in, idle ones further
+  out, sub-agents as moons, workflow runs as ringed planets, and MCP servers on the outer
+  belt. Click anything to open it. MCP servers are read from the agents' configs by name
+  only; commands, URLs and env never leave the host.
+- **App:** the AI architecture the project's own code builds. Its agents (pydantic-ai,
+  OpenAI Agents, LangChain, CrewAI, Agno, Mastra, Vercel AI SDK, Claude Agent SDK, or direct
+  model calls) are planets with their tools as moons. Its MCP servers sit further out with
+  their tools, and the models and `SKILL.md` skills it uses are on the outer belt. Click
+  anything to open its code at that line. The map is read from the source (nothing runs),
+  skips tests and the coding agents' own folders, and links things by name and file, so
+  treat it as a map, not a proof.
 
 ## Settings
 
@@ -147,7 +205,7 @@ light and dark themes:
 **Editor (phase 1)**
 - Monaco, loaded only when the IDE opens, with syntax colours for ~80 languages and BB's
   current code theme (light and dark).
-- Tabs with dirty markers and up to three side-by-side groups (⌘\\). A file open in two
+- Tabs with dirty markers and up to four side-by-side groups (⌘\\). A file open in two
   groups shares one buffer.
 - ⌘S saves with compare-and-swap on the file's SHA-256. If the file changed on disk since
   you opened it (an agent edited it, say), the save stops and a banner offers **Reload** or

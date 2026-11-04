@@ -3,6 +3,50 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [0.7.0] - 2026-11-04
+
+### Added
+- **Agent Network App mode.** A Coding / App switch in the Agent Network's header. App shows
+  the AI architecture the project's own code builds, as the same solar system:
+  - Agents are planets with their tools as moons. Agent frameworks are recognised, and so
+    are direct LLM calls.
+  - MCP servers sit further out, with their tools.
+  - Models and skills are on the outer belt.
+
+  Click anything to open its code at that line. It is read from the source, never run, and
+  rescans every 30 s while shown.
+
+### Changed
+- In the Agent Network, Koda (the sun) wears sunglasses. Everywhere else he looks as before.
+- The Agent Network's activity-bar icon is a Saturn instead of a target.
+- A calmer Agent Network:
+  - The header is one row: the title, a single line of counts with zeros left out, the
+    Coding / App switch and the controls.
+  - The legend moved behind a Key button.
+  - Only agents, runs and app MCP servers are labelled; everything else names itself on hover.
+- Activity-bar icons show their name and shortcut on hover, as in VS Code.
+- The README opens with every feature at a glance and screenshots. The store description,
+  tags and overview now name each capability, so a search for "debugger", "lsp",
+  "find in files" or "mcp" finds KodaForge.
+
+## [0.6.0] - 2026-11-04
+
+### Added
+- **Editor tab management.** Drag tabs to reorder them, onto another group to move them
+  (hold ⌥ to copy), or onto the left or right edge of an editor to split it there. Up to
+  four groups side by side. Right-click a tab for Close, Close Others, Close to the Right,
+  Close All, Pin, Split Right, Move to Next/Previous Group and Copy Path. Pinned tabs stay
+  first and survive bulk closes; unsaved tabs are never closed by them. Files dragged in
+  from the Explorer open where they're dropped.
+- **Tab shortcuts.** ⌘W close, ⌘⇧T reopen closed, ⌥⌘T close others, ⌃Tab / ⌥⌘←→ switch
+  tabs, ⌃⌘←→ move a tab to the previous/next group, ⌘1–4 focus a group.
+- **Agent Network (⌘⇧A).** This project's agents as a solar system with Koda as the sun:
+  working agents on the inner orbit with energy flowing from the sun, idle ones further out,
+  sub-agents as moons, workflow runs as ringed planets with their agents circling them, and
+  MCP servers (Claude, Codex, the project's and Claude plugins') as stations on the outer
+  belt. Hover for details, click to open a thread or a run's graph, scroll to zoom, drag to
+  pan. It opens as an editor tab, so it can sit beside your code.
+
 ## [0.5.0] - 2026-11-04
 
 ### Added
@@ -90,6 +134,7 @@ them from the `vX.Y.Z` tags.
 - Agent chat, threads and workflows in a right-hand panel.
 - Koda the bear, and colour coding from the BB theme.
 
+[0.6.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Kodaks94/bb-plugin-kodaforge/compare/v0.2.2...v0.3.0

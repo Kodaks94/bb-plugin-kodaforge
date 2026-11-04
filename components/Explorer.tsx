@@ -1,5 +1,6 @@
 // Phase 2: the file tree. A virtual list over the flattened tree, with create,
 // rename, move (drag and drop), delete, git colours and reveal-active-file.
+import { isVirtualTab } from "@/lib/editor-state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { experimental_useCodeTheme, useRpc } from "@get-bb/plugin-sdk/app";
@@ -101,7 +102,7 @@ export function Explorer({
 
   // Reveal the active file: open its folders, select and scroll to it.
   useEffect(() => {
-    if (activePath === null || activePath.startsWith("diff:")) return;
+    if (activePath === null || isVirtualTab(activePath)) return;
     setSelected(activePath);
     setExpanded((current) => {
       const missing = ancestorsOf(activePath).filter((folder) => !current.has(folder));

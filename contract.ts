@@ -143,6 +143,40 @@ export const hostContract = defineRpcContract({
       .strict(),
     output: z.object({ result: z.unknown() }),
   },
+  /** The AI architecture the workspace's own code builds (agents, tools, MCP servers, models, skills). */
+  appArchitecture: {
+    experimental_retryable: true,
+    input: rootInput.extend({ excludedNames: z.array(z.string()).max(200) }).strict(),
+    output: z.object({
+      nodes: z.array(
+        z.object({
+          id: z.string(),
+          kind: z.enum(["agent", "tool", "mcp", "model", "skill"]),
+          name: z.string(),
+          detail: z.string(),
+          path: z.string(),
+          line: z.number(),
+          usesMcp: z.boolean().optional(),
+        }),
+      ),
+      links: z.array(z.object({ from: z.string(), to: z.string() })),
+      truncated: z.boolean(),
+    }),
+  },
+  mcpServers: {
+    experimental_retryable: true,
+    input: rootInput,
+    output: z.object({
+      servers: z.array(
+        z.object({
+          name: z.string(),
+          source: z.enum(["claude", "project", "codex", "plugin"]),
+          transport: z.enum(["stdio", "http", "sse"]),
+          plugin: z.string().nullable(),
+        }),
+      ),
+    }),
+  },
   pythonEnvs: {
     experimental_retryable: true,
     input: rootInput,

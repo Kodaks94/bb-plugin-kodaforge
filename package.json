@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-kodaforge",
-  "version": "0.5.0",
+  "version": "0.7.0",
   "type": "module",
   "engines": {
     "bb": ">=0.48",
@@ -9,7 +9,7 @@
   },
   "bb": {
     "name": "KodaForge",
-    "description": "KodaForge: a VS Code-style IDE for BB with Koda the bear. Monaco editor, explorer, search and replace, language servers, split terminals, source control, and agent chat, threads and workflows beside your code.",
+    "description": "Edit, run and debug your project inside BB, with agent chat, threads and workflows open beside the code. A Monaco code editor with tabs, split editors, quick open (⌘P), find in files, and search and replace with a preview. Language servers (LSP) for Python and TypeScript give completion, go to definition, find references, rename and a Problems panel. Debug Python with breakpoints, pick the Python environment (venv, uv, Poetry, conda), run Makefile and npm tasks, and work in split terminals that survive restarts. Source control stages, diffs, commits, stashes, pulls and pushes with git. The Agent Network maps the agents and MCP servers working on your project, and in App mode the agents, tools, MCP servers, models and skills your code builds. Install the language servers (pyright or basedpyright, typescript-language-server) and debugpy yourself.",
     "branding": {
       "icon": "./assets/icon.svg"
     },
@@ -72,12 +72,19 @@
   "keywords": [
     "bb-plugin",
     "ide",
-    "editor",
-    "monaco",
+    "code-editor",
     "vscode",
+    "monaco",
     "lsp",
+    "language-server",
+    "debugger",
+    "python",
     "terminal",
     "git",
+    "source-control",
+    "search-and-replace",
+    "mcp",
+    "agent-network",
     "koda"
   ],
   "homepage": "https://github.com/Kodaks94/bb-plugin-kodaforge#readme",
