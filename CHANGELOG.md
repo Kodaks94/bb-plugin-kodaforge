@@ -24,6 +24,10 @@ them from the `vX.Y.Z` tags.
     Coding / App switch and the controls.
   - The legend moved behind a Key button.
   - Only agents, runs and app MCP servers are labelled; everything else names itself on hover.
+- Activity-bar icons show their name and shortcut on hover, as in VS Code.
+- The README opens with every feature at a glance and screenshots. The store description,
+  tags and overview now name each capability, so a search for "debugger", "lsp",
+  "find in files" or "mcp" finds KodaForge.
 
 ## [0.6.0] - 2026-11-04
 

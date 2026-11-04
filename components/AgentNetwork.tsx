@@ -115,11 +115,12 @@ export function AgentNetwork({
   const count = (kind: string) => arch?.nodes.filter((n) => n.kind === kind).length ?? 0;
   const [showKey, setShowKey] = useState(false);
   // One quiet line of counts (zeros left out) instead of a row of chips.
-  const tally = (parts: [number, string][]) => parts.filter(([n]) => n > 0).map(([n, what]) => `${n} ${what}`).join(" · ");
+  const tally = (parts: [number, string][]) =>
+    parts.filter(([n]) => n > 0).map(([n, what]) => `${n} ${n === 1 ? what.replace(/s$/, "") : what}`).join(" · ");
   const summary =
     mode === "app"
       ? tally([[count("agent"), "agents"], [count("tool"), "tools"], [count("mcp"), "MCP servers"], [count("model"), "models"], [count("skill"), "skills"]]) || "Scanning the code…"
-      : tally([[working, "working"], [mine.length - working, "idle"], [runs.length, "workflows"], [mcps.length, "MCP servers"]]) || "No agents yet";
+      : tally([[working, "working"], [mine.length - working, "idle"], [runs.length, "workflow runs"], [mcps.length, "MCP servers"]]) || "No agents yet";
 
   // Canvas, camera and interaction.
   const canvasRef = useRef<HTMLCanvasElement>(null);

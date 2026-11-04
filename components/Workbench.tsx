@@ -43,6 +43,7 @@ import { useSettings } from "./use-settings";
 import { SettingsView } from "./SettingsView";
 import { AgentNetwork } from "./AgentNetwork";
 import { SaturnIcon } from "./SaturnIcon";
+import { HoverLabel } from "./HoverLabel";
 
 type Editor = MonacoApi.editor.IStandaloneCodeEditor;
 type View = "explorer" | "search" | "scm" | "debug" | "tasks" | "problems" | "settings";
@@ -918,10 +919,9 @@ export function Workbench({
             <button
               key={entry.id}
               type="button"
-              title={entry.keys ? `${entry.label} (${entry.keys})` : entry.label}
               aria-label={entry.label}
               aria-pressed={view === entry.id}
-              className={`relative flex size-9 items-center justify-center rounded-md ${
+              className={`group relative flex size-9 items-center justify-center rounded-md ${
                 view === entry.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setView((v) => (v === entry.id ? null : entry.id))}
@@ -930,6 +930,7 @@ export function Workbench({
               <span className="flex" style={{ color: view === entry.id ? hues[entry.hue] : undefined }}>
                 <Icon name={entry.icon} className="size-5" />
               </span>
+              <HoverLabel text={entry.label} keys={entry.keys} />
               {entry.id === "problems" && errors + warnings > 0 ? (
                 <span className="absolute right-0.5 top-0.5 rounded-full px-1 text-[10px] font-semibold leading-4" style={{ background: errors > 0 ? hues.red : hues.yellow, color: "var(--background)" }}>
                   {errors + warnings}
@@ -940,15 +941,15 @@ export function Workbench({
           <span className="flex-1" />
           <button
             type="button"
-            title="Agent Network (⌘⇧A)"
             aria-label="Agent Network"
             aria-pressed={activePath === AGENTS_TAB}
-            className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+            className="group relative flex size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
             onClick={() => dispatch({ type: "open", path: AGENTS_TAB })}
           >
             <span className="flex" style={{ color: activePath === AGENTS_TAB ? hues.yellow : undefined }}>
               <SaturnIcon className="size-5" />
             </span>
+            <HoverLabel text="Agent Network" keys="⌘⇧A" />
           </button>
           {(
             [
@@ -960,15 +961,15 @@ export function Workbench({
             <button
               key={tab}
               type="button"
-              title={label}
               aria-label={label}
               aria-pressed={sideOpen && sideTab === tab}
-              className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+              className="group relative flex size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
               onClick={() => (sideOpen && sideTab === tab ? setSideOpen(false) : openSide(tab))}
             >
               <span className="flex" style={{ color: sideOpen && sideTab === tab ? hue : undefined }}>
                 <Icon name={icon} className="size-5" />
               </span>
+              <HoverLabel text={label} />
             </button>
           ))}
           <KodaButton mood={mood} />

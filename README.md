@@ -10,6 +10,35 @@
 
 <sub>20 seconds, sound on: click the image to play. Your agents code in BB. Now you can too.</sub>
 
+## Everything it does
+
+| | |
+| --- | --- |
+| **Code editor** | Monaco with tabs, up to four split editor groups, minimap, find and replace, and saves that never overwrite an agent's edit |
+| **Search everything (⌘P)** | Files, symbols, text in files and commands from one box; find in files and search and replace with a preview (⌘⇧F) |
+| **Language servers (LSP)** | Python (pyright, basedpyright) and TypeScript/JavaScript: completion, hover, go to definition, find references, rename, problems, format on save |
+| **Run and debug Python** | Breakpoints, stepping, variables, call stack and a debug console, with debugpy |
+| **Python environments** | venv, uv, Poetry, conda and pyenv interpreters, used by the language server, debugger, terminals and tasks |
+| **Tasks** | Makefile targets and npm/package.json scripts, one click to run |
+| **Terminals** | Split terminals that keep running and reattach after you leave or restart |
+| **Source control (git)** | Stage, diff, commit, stash, pull, push and switch branches |
+| **Explorer** | File tree with git colours, drag to move, rename and delete, Material Icon Theme file icons |
+| **Agents beside your code** | Agent chat, the project's threads and workflow runs in a right-hand panel (⌘⌥B), plus a workflow agent graph |
+| **Agent Network (⌘⇧A)** | The agents, workflow runs and MCP servers working on your project, and in **App** mode the AI architecture your code builds |
+| **Several projects at once** | One tab per workspace (checkouts, worktrees, thread workspaces); switching keeps files, terminals and the debugger alive |
+| **Koda** | A pixel bear cub who works, cheers after saves and commits, sweats over errors, and naps when you're idle |
+
+![KodaForge: the explorer and a Python file in the editor](docs/images/editor.jpg)
+
+**Agent Network, App mode:** the agents, tools, MCP servers, models and skills that the code
+defines, here a small email-triage app. Click anything to open its code.
+
+![Agent Network in App mode, mapping an email-triage app's agents, tools and MCP server](docs/images/agent-network-app.jpg)
+
+**Agent Network, Coding mode:** the threads, workflow runs and MCP servers working on the project.
+
+![Agent Network in Coding mode, with threads, a workflow run and MCP servers orbiting Koda](docs/images/agent-network-coding.jpg)
+
 ## Install in BB
 
 The quickest way is one command, pinned to the 0.x releases so updates arrive without breaking changes:
@@ -82,7 +111,7 @@ left or right edge to split. Right-click a tab for close, pin and move commands.
 
 ## Agent Network
 
-⌘⇧A (or the Saturn icon) opens the Agent Network, a solar system around Koda, in two modes:
+⌘⇧A (or the Saturn icon; hover any activity-bar icon for its name) opens the Agent Network, a solar system around Koda, in two modes:
 
 - **Coding:** the agents working on this project. Working agents close in, idle ones further
   out, sub-agents as moons, workflow runs as ringed planets, and MCP servers on the outer
