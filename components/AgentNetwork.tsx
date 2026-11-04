@@ -1,4 +1,7 @@
-// The Agent Network: this project's agents as a living solar system with Koda as the sun.
+// The Agent Network, in two modes. Coding: the agents working on this project as a living
+// solar system with Koda as the sun. App: the AI architecture the project's own code builds
+// (its agents and their tools, MCP servers, models and skills), read from the source.
+// Coding mode:
 // Working threads orbit close, idle ones further out, sub-agents are their moons, workflow
 // runs are ringed planets whose agents circle them, and MCP servers are stations on the
 // outer belt. Click a planet to open its thread, a ringed planet to open its run graph.
@@ -6,13 +9,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { experimental_useSidebarThreads, useRpc } from "@get-bb/plugin-sdk/app";
 import type { ResolvedScope, rpcContract, Scope } from "../server";
 import type { AgentCall, RunHistory } from "@/lib/workflows";
-import { buildGalaxy, type Body, type GalaxyRun, type GalaxyThread } from "@/lib/galaxy";
+import { buildAppGalaxy, buildGalaxy, type Body, type GalaxyRun, type GalaxyThread } from "@/lib/galaxy";
+import type { Architecture } from "@/lib/app-architecture";
 import { runs as spriteRuns, spriteFor } from "@/lib/koda-sprite";
 import { Icon } from "@/components/ui/icon";
 import { useHues } from "./colors";
 
 type Mcp = { name: string; source: "claude" | "project" | "codex" | "plugin"; transport: string; plugin: string | null };
 type Point = { x: number; y: number };
+type Mode = "coding" | "app";
 
 const LIVE_RUN = new Set(["running", "queued", "pending", "starting"]);
 
@@ -21,15 +26,32 @@ export function AgentNetwork({
   workspace,
   onOpenThread,
   onOpenRun,
+  onOpenFile,
 }: {
   scope: Scope;
   workspace: ResolvedScope;
   onOpenThread(id: string): void;
   onOpenRun(id: string): void;
+  onOpenFile(path: string, line: number): void;
 }) {
   const rpc = useRpc<typeof rpcContract>();
   const hues = useHues();
   const { threads } = experimental_useSidebarThreads();
+  const [mode, setMode] = useState<Mode>("coding");
+
+  // App mode: the project's own agent architecture, rescanned every 30 s while shown.
+  const [arch, setArch] = useState<(Architecture & { truncated: boolean }) | null>(null);
+  useEffect(() => {
+    if (mode !== "app") return;
+    let stopped = false;
+    const load = () => void rpc.call("appArchitecture", { scope }).then((a) => !stopped && setArch(a), () => !stopped && setArch({ nodes: [], links: [], truncated: false }));
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [rpc, scope, mode]);
 
   // Workflow runs (the latest few, with their agents) and MCP servers, polled.
   const [runs, setRuns] = useState<GalaxyRun[]>([]);
@@ -85,8 +107,12 @@ export function AgentNetwork({
     [threads, workspace.projectId],
   );
 
-  const galaxy = useMemo(() => buildGalaxy(mine, runs, mcps), [mine, runs, mcps]);
+  const galaxy = useMemo(
+    () => (mode === "app" ? buildAppGalaxy(arch ?? { nodes: [], links: [] }) : buildGalaxy(mine, runs, mcps)),
+    [mode, arch, mine, runs, mcps],
+  );
   const working = mine.filter((t) => t.state === "working").length;
+  const count = (kind: string) => arch?.nodes.filter((n) => n.kind === kind).length ?? 0;
 
   // Canvas, camera and interaction.
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -95,8 +121,8 @@ export function AgentNetwork({
   const [labels, setLabels] = useState(true);
   const camera = useRef({ zoom: 1, x: 0, y: 0 });
   const positions = useRef(new Map<string, Point & { r: number }>());
-  const latest = useRef({ galaxy, paused, labels, hues, hoverId: null as string | null });
-  latest.current = { galaxy, paused, labels, hues, hoverId: hover?.body.id ?? null };
+  const latest = useRef({ galaxy, paused, labels, hues, mode, hoverId: null as string | null });
+  latest.current = { galaxy, paused, labels, hues, mode, hoverId: hover?.body.id ?? null };
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -117,7 +143,7 @@ export function AgentNetwork({
         canvas.width = Math.round(width * dpr);
         canvas.height = Math.round(height * dpr);
       }
-      const { galaxy: g, paused: still, labels: showLabels, hues: h, hoverId } = latest.current;
+      const { galaxy: g, paused: still, labels: showLabels, hues: h, mode: view, hoverId } = latest.current;
       if (!still) clock += Math.min(now - last, 50) / 1000;
       last = now;
       const cam = camera.current;
@@ -203,7 +229,7 @@ export function AgentNetwork({
       ctx.lineWidth = 1;
 
       // The sun: Koda, with a breathing corona that brightens when agents work.
-      const busy = g.bodies.some((b) => b.working);
+      const busy = view === "app" || g.bodies.some((b) => b.working);
       const pulse = 1 + 0.06 * Math.sin(clock * (busy ? 2.4 : 0.9));
       const sunR = 46 * scale * pulse;
       const corona = ctx.createRadialGradient(cx, cy, sunR * 0.2, cx, cy, sunR * 2.6);
@@ -225,7 +251,7 @@ export function AgentNetwork({
         if (!p) continue;
         const color = colorOf(body, h);
         const hovered = body.id === hoverId;
-        if (body.kind === "mcp") {
+        if (body.kind === "mcp" || body.kind === "skill") {
           ctx.save();
           ctx.translate(p.x, p.y);
           ctx.rotate(Math.PI / 4 + clock * 0.3);
@@ -261,7 +287,7 @@ export function AgentNetwork({
           ctx.fill();
           ctx.shadowBlur = 0;
           ctx.globalAlpha = 1;
-          if (body.kind === "run") {
+          if (body.kind === "run" || body.kind === "model") {
             ctx.strokeStyle = hexA(color, 0.75);
             ctx.lineWidth = 1.5;
             ctx.beginPath();
@@ -270,7 +296,8 @@ export function AgentNetwork({
             ctx.lineWidth = 1;
           }
         }
-        const showLabel = hovered || (showLabels && (body.kind === "run" || body.kind === "mcp" || (body.kind === "thread" && (body.working || scale > 0.9))));
+        const showLabel =
+          hovered || (showLabels && (body.kind === "run" || body.kind === "mcp" || body.kind === "appAgent" || body.kind === "model" || (body.kind === "thread" && (body.working || scale > 0.9))));
         if (showLabel) {
           ctx.font = `${hovered ? 600 : 500} 11px ui-sans-serif, system-ui, sans-serif`;
           ctx.textAlign = "center";
@@ -305,7 +332,8 @@ export function AgentNetwork({
 
   const open = (body: Body) => {
     setHover(null);
-    if (body.kind === "run") onOpenRun(body.ref);
+    if (body.file) onOpenFile(body.file.path, body.file.line);
+    else if (body.kind === "run") onOpenRun(body.ref);
     else if (body.kind === "agent" && body.thread) onOpenThread(body.thread);
     else if (body.kind === "thread" || body.kind === "child") onOpenThread(body.ref);
   };
@@ -327,7 +355,11 @@ export function AgentNetwork({
         ref={canvasRef}
         className="absolute inset-0 h-full w-full"
         role="img"
-        aria-label={`Agent network: ${working} working, ${mine.length - working} idle, ${runs.length} workflow runs, ${mcps.length} MCP servers`}
+        aria-label={
+          mode === "app"
+            ? `App architecture: ${count("agent")} agents, ${count("tool")} tools, ${count("mcp")} MCP servers, ${count("model")} models, ${count("skill")} skills`
+            : `Agent network: ${working} working, ${mine.length - working} idle, ${runs.length} workflow runs, ${mcps.length} MCP servers`
+        }
         style={{ cursor: hover ? "pointer" : drag.current ? "grabbing" : "grab" }}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -375,14 +407,44 @@ export function AgentNetwork({
       <header className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start gap-3 p-4">
         <div>
           <h2 className="text-sm font-semibold tracking-wide text-white">Agent Network</h2>
-          <p className="text-[11px] text-white/55">{workspace.label} · Koda at the centre</p>
+          <p className="text-[11px] text-white/55">
+            {workspace.label} · {mode === "app" ? "what this project's code builds" : "who is working on this project"}
+          </p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          <Stat color={hues.blue} label="working" value={working} />
-          <Stat color="#9aa5c4" label="idle" value={mine.length - working} />
-          <Stat color={hues.green} label="workflows" value={runs.length} />
-          <Stat color={hues.cyan} label="MCP servers" value={mcps.length} />
+        <div className="pointer-events-auto flex rounded-md border border-white/10 bg-white/5 p-0.5 text-[11px] backdrop-blur" role="tablist" aria-label="Agent Network mode">
+          {(["coding", "app"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={mode === m}
+              title={m === "app" ? "The agents, tools, MCP servers, models and skills this project's code defines" : "The agents, workflows and MCP servers working on this project"}
+              className={`rounded px-2 py-0.5 ${mode === m ? "bg-white/15 font-semibold text-white" : "text-white/60 hover:text-white"}`}
+              onClick={() => {
+                setHover(null);
+                setMode(m);
+              }}
+            >
+              {m === "app" ? "App" : "Coding"}
+            </button>
+          ))}
         </div>
+        {mode === "app" ? (
+          <div className="flex flex-wrap gap-1.5">
+            <Stat color={hues.orange} label="agents" value={count("agent")} />
+            <Stat color={hues.yellow} label="tools" value={count("tool")} />
+            <Stat color={hues.cyan} label="MCP servers" value={count("mcp")} />
+            <Stat color={hues.blue} label="models" value={count("model")} />
+            <Stat color={hues.green} label="skills" value={count("skill")} />
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            <Stat color={hues.blue} label="working" value={working} />
+            <Stat color="#9aa5c4" label="idle" value={mine.length - working} />
+            <Stat color={hues.green} label="workflows" value={runs.length} />
+            <Stat color={hues.cyan} label="MCP servers" value={mcps.length} />
+          </div>
+        )}
         <span className="flex-1" />
         <div className="pointer-events-auto flex gap-1">
           <Toggle icon={paused ? "Play" : "Pause"} label={paused ? "Resume motion" : "Pause motion"} onClick={() => setPaused((v) => !v)} />
@@ -391,16 +453,36 @@ export function AgentNetwork({
         </div>
       </header>
 
-      <footer className="pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 p-4 text-[11px] text-white/60">
-        <Legend shape="dot" color={hues.orange} label="Claude Code agent" />
-        <Legend shape="dot" color={hues.green} label="Codex agent" />
-        <Legend shape="dot" color={hues.magenta} label="Other agent" />
-        <Legend shape="ring" color={hues.green} label="Workflow run" />
-        <Legend shape="diamond" color={hues.cyan} label="MCP server" />
-        <span>Inner orbit: working · outer: idle · moons: sub-agents</span>
-      </footer>
+      {mode === "app" ? (
+        <footer className="pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 p-4 text-[11px] text-white/60">
+          <Legend shape="dot" color={hues.orange} label="Agent" />
+          <Legend shape="dot" color={hues.magenta} label="Direct LLM call" />
+          <Legend shape="dot" color={hues.yellow} label="Tool (moon)" />
+          <Legend shape="diamond" color={hues.cyan} label="MCP server" />
+          <Legend shape="ring" color={hues.blue} label="Model" />
+          <Legend shape="diamond" color={hues.green} label="Skill" />
+          <span>Read from the source, not run · click anything to open its code</span>
+        </footer>
+      ) : (
+        <footer className="pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 p-4 text-[11px] text-white/60">
+          <Legend shape="dot" color={hues.orange} label="Claude Code agent" />
+          <Legend shape="dot" color={hues.green} label="Codex agent" />
+          <Legend shape="dot" color={hues.magenta} label="Other agent" />
+          <Legend shape="ring" color={hues.green} label="Workflow run" />
+          <Legend shape="diamond" color={hues.cyan} label="MCP server" />
+          <span>Inner orbit: working · outer: idle · moons: sub-agents</span>
+        </footer>
+      )}
 
-      {mine.length === 0 && runs.length === 0 ? (
+      {mode === "app" && arch !== null && arch.nodes.length === 0 ? (
+        <p className="pointer-events-none absolute inset-x-0 bottom-20 text-center text-xs text-white/60">
+          No agents, MCP servers or model calls found in this project's code.
+        </p>
+      ) : null}
+      {mode === "app" && arch?.truncated ? (
+        <p className="pointer-events-none absolute inset-x-0 bottom-14 text-center text-[11px] text-white/45">Large project: the first 3000 source files were scanned.</p>
+      ) : null}
+      {mode === "coding" && mine.length === 0 && runs.length === 0 ? (
         <p className="pointer-events-none absolute inset-x-0 bottom-20 text-center text-xs text-white/60">
           No agents in this project yet. Start a chat and it will appear here as a planet.
         </p>
@@ -414,7 +496,7 @@ export function AgentNetwork({
         >
           <div className="font-semibold">{hover.body.label}</div>
           <div className="mt-0.5 text-white/65">{hover.body.detail}</div>
-          {hover.body.kind !== "mcp" ? <div className="mt-1 text-[10px] text-white/45">Click to open</div> : null}
+          {hover.body.kind !== "mcp" || hover.body.file ? <div className="mt-1 text-[10px] text-white/45">{hover.body.file ? "Click to open the code" : "Click to open"}</div> : null}
         </div>
       ) : null}
     </div>
@@ -457,6 +539,10 @@ function Legend({ shape, color, label }: { shape: "dot" | "ring" | "diamond"; co
 }
 
 function colorOf(body: Body, h: ReturnType<typeof useHues>): string {
+  if (body.kind === "appAgent") return body.provider === "LLM call" ? h.magenta : h.orange;
+  if (body.kind === "tool") return h.yellow;
+  if (body.kind === "model") return h.blue;
+  if (body.kind === "skill") return h.green;
   if (body.kind === "mcp") return body.source === "codex" ? h.green : body.source === "plugin" ? h.magenta : h.cyan;
   if (body.kind === "agent") return body.state === "error" ? h.red : body.working ? h.blue : body.state === "idle" ? h.green : h.yellow;
   if (body.kind === "run") return body.state === "error" ? h.red : body.working ? h.blue : h.green;

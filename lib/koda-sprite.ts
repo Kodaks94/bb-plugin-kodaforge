@@ -1,5 +1,5 @@
 // Koda, KodaForge's bear cub, as a 16×14 pixel grid. Each mood swaps the eye and
-// mouth pixels; everything else is shared.
+// mouth pixels; everything else is shared. Koda always wears sunglasses, drawn over the eyes.
 
 export type Mood = "idle" | "blink" | "working" | "happy" | "worried" | "sleepy";
 
@@ -15,6 +15,8 @@ export const PALETTE: Record<string, string> = {
   s: "#6fc3f2", // sweat
   z: "#9db4c8", // sleep z
   y: "#ffd34d", // spark (working)
+  g: "#14161c", // sunglasses lens
+  l: "#5f7487", // lens glint
 };
 
 const BASE = [
@@ -56,6 +58,13 @@ const EXTRAS: Partial<Record<Mood, Patch>> = {
   working: [[0, 7, "y"], [1, 6, "y"], [1, 8, "y"], [2, 7, "y"]],
 };
 
+// Lenses over both eyes, a bridge between them and arms out to the fur; the mouth and extras still show the mood.
+const SUNGLASSES: Patch = [
+  [5, 2, "o"], [5, 3, "g"], [5, 4, "l"], [5, 5, "g"], [5, 6, "g"], [5, 7, "o"], [5, 8, "o"],
+  [5, 9, "g"], [5, 10, "l"], [5, 11, "g"], [5, 12, "g"], [5, 13, "o"],
+  [6, 3, "g"], [6, 4, "g"], [6, 5, "g"], [6, 6, "g"], [6, 9, "g"], [6, 10, "g"], [6, 11, "g"], [6, 12, "g"],
+];
+
 const FACES: Record<Mood, { eyes: keyof typeof EYES; mouth: keyof typeof MOUTH }> = {
   idle: { eyes: "open", mouth: "line" },
   blink: { eyes: "closed", mouth: "line" },
@@ -68,7 +77,7 @@ const FACES: Record<Mood, { eyes: keyof typeof EYES; mouth: keyof typeof MOUTH }
 export function spriteFor(mood: Mood): string[] {
   const grid = BASE.map((row) => row.split(""));
   const face = FACES[mood];
-  for (const [row, col, color] of [...EYES[face.eyes], ...MOUTH[face.mouth], ...(EXTRAS[mood] ?? [])]) {
+  for (const [row, col, color] of [...EYES[face.eyes], ...SUNGLASSES, ...MOUTH[face.mouth], ...(EXTRAS[mood] ?? [])]) {
     grid[row]![col] = color;
   }
   return grid.map((row) => row.join(""));

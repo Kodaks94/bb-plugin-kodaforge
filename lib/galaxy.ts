@@ -2,6 +2,7 @@
 // how fast, and which links to draw. Distances are in world units; the view scales them
 // so the MCP belt fits the screen.
 import type { AgentCall } from "./workflows";
+import type { Architecture } from "./app-architecture";
 
 export type AgentState = "working" | "idle" | "waiting" | "error";
 
@@ -32,7 +33,7 @@ export interface GalaxyMcp {
 
 export interface Body {
   id: string;
-  kind: "thread" | "child" | "run" | "agent" | "mcp";
+  kind: "thread" | "child" | "run" | "agent" | "mcp" | "appAgent" | "tool" | "model" | "skill";
   /** The thread id, run id or MCP name this body stands for. */
   ref: string;
   /** For a workflow agent: the thread it worked in. */
@@ -50,6 +51,8 @@ export interface Body {
   state: AgentState;
   provider?: string;
   source?: GalaxyMcp["source"];
+  /** App mode: where it is defined, opened on click. */
+  file?: { path: string; line: number };
 }
 
 export interface Galaxy {
@@ -180,5 +183,55 @@ export function buildGalaxy(threads: GalaxyThread[], runs: GalaxyRun[], mcps: Ga
   if (idle.length) rings.push({ radius: RING.idle, dashed: false });
   if (runs.length) rings.push({ radius: RING.workflows, dashed: false });
   if (mcps.length) rings.push({ radius: RING.mcp, dashed: true });
+  return { bodies, rings, links };
+}
+
+const MAX_TOOL_MOONS = 16;
+
+/** App mode: the project's own agents as planets with their tools as moons, its MCP servers
+ * further out (with their tools), and the models and skills it uses on the outer belt. */
+export function buildAppGalaxy(arch: Architecture): Galaxy {
+  const bodies: Body[] = [];
+  const links: Galaxy["links"] = [];
+  const of = (kind: string) => arch.nodes.filter((n) => n.kind === kind);
+  const agents = of("agent");
+  const servers = of("mcp");
+  const outer = [...of("model"), ...of("skill")];
+  const owner = new Map<string, string>(); // tool id → the first agent or server it hangs off
+  for (const link of arch.links) if (link.to.startsWith("tool:") && !owner.has(link.to)) owner.set(link.to, link.from);
+  const toolsOf = (id: string) => of("tool").filter((t) => owner.get(t.id) === id);
+  const base = (n: Architecture["nodes"][number]) => ({ ref: n.id, label: n.name, file: { path: n.path, line: n.line }, working: false, state: "idle" as const });
+  const count = (id: string) => {
+    const n = toolsOf(id).length;
+    return n ? ` · ${n} tool${n === 1 ? "" : "s"}` : "";
+  };
+  const moons = (parent: string) => {
+    const tools = toolsOf(parent);
+    tools.slice(0, MAX_TOOL_MOONS).forEach((t, j) =>
+      bodies.push({ ...base(t), id: `x:${t.id}`, kind: "tool", detail: `Tool · ${t.path}:${t.line}`, parent: `x:${parent}`, orbit: 18 + (j % 3) * 7, speed: 1.2 - (j % 3) * 0.3, phase: spread(j, Math.min(tools.length, MAX_TOOL_MOONS), t.id), size: 3 }),
+    );
+  };
+  agents.forEach((a, i) => {
+    bodies.push({ ...base(a), id: `x:${a.id}`, kind: "appAgent", detail: `${a.detail} · ${a.path}:${a.line}${count(a.id)}`, orbit: RING.working, speed: 0.08, phase: spread(i, agents.length, a.id), size: 8, provider: a.detail });
+    moons(a.id);
+  });
+  servers.forEach((m, i) => {
+    bodies.push({ ...base(m), id: `x:${m.id}`, kind: "mcp", detail: `${m.detail} · ${m.path}:${m.line}${count(m.id)}`, orbit: RING.workflows, speed: -0.03, phase: spread(i, servers.length, m.id) + Math.PI / 5, size: 6, source: "project" });
+    moons(m.id);
+  });
+  outer.forEach((n, i) =>
+    bodies.push({ ...base(n), id: `x:${n.id}`, kind: n.kind as "model" | "skill", detail: `${n.kind === "model" ? "Model" : "Skill"} · ${n.path}:${n.line}`, orbit: RING.mcp, speed: -0.015, phase: spread(i, outer.length, n.id), size: n.kind === "model" ? 6 : 4 }),
+  );
+  const shown = new Set(bodies.map((b) => b.id));
+  for (const link of arch.links) {
+    const from = `x:${link.from}`;
+    const to = `x:${link.to}`;
+    // Agent → MCP server always; models and skills light up on hover (there can be many).
+    if (shown.has(from) && shown.has(to) && !link.to.startsWith("tool:")) links.push({ from, to, kind: link.to.startsWith("mcp:") ? "workflow" : "mcp" });
+  }
+  const rings: Galaxy["rings"] = [];
+  if (agents.length) rings.push({ radius: RING.working, dashed: false });
+  if (servers.length) rings.push({ radius: RING.workflows, dashed: false });
+  if (outer.length) rings.push({ radius: RING.mcp, dashed: true });
   return { bodies, rings, links };
 }

@@ -3,6 +3,23 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [0.7.0] - 2026-11-04
+
+### Added
+- **Agent Network App mode.** A Coding / App switch in the Agent Network's header. App shows
+  the AI architecture the project's own code builds, as the same solar system:
+  - Agents are planets with their tools as moons. Agent frameworks are recognised, and so
+    are direct LLM calls.
+  - MCP servers sit further out, with their tools.
+  - Models and skills are on the outer belt.
+
+  Click anything to open its code at that line. It is read from the source, never run, and
+  rescans every 30 s while shown.
+
+### Changed
+- Koda wears sunglasses.
+- The Agent Network's activity-bar icon is an orbit instead of a target.
+
 ## [0.6.0] - 2026-11-04
 
 ### Added

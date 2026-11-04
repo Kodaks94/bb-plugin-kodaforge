@@ -6,13 +6,16 @@ import { checkRealPath } from "./lib/realpath-guard.js";
 import { toRelativeChange } from "./lib/watch.js";
 import { run } from "./lib/run.js";
 import { parsePorcelain, withinPrefix } from "./lib/git-status.js";
-import { searchWorkspace } from "./lib/search-files.js";
+import { listCandidates, MAX_SEARCH_FILE_BYTES, searchWorkspace } from "./lib/search-files.js";
 import { LspHost } from "./lib/lsp-host.js";
 import { formatFile } from "./lib/format.js";
 import { resolveWithinRoot } from "./lib/paths.js";
 import * as gitOps from "./lib/git-ops.js";
 import { runWorkflowCommand } from "./lib/workflows.js";
 import { discoverMcpServers } from "./lib/mcp-servers.js";
+import { isAppSource, mergeArchitecture } from "./lib/app-architecture.js";
+import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
 import { resolvePythonDebugger } from "./lib/debug-adapter.js";
 import { findBinary } from "./lib/lsp-host.js";
 import { discoverPythonEnvs } from "./lib/python-envs.js";
@@ -74,6 +77,19 @@ export default experimental_defineHostEntry({
 
     pythonEnvs: async ({ root }) => ({ envs: await discoverPythonEnvs(root) }),
     mcpServers: async ({ root }) => ({ servers: await discoverMcpServers(root) }),
+
+    appArchitecture: async ({ root, excludedNames }) => {
+      // shortcut: reads up to 3000 source files per scan; a huge monorepo shows a partial map (truncated).
+      const candidates = (await listCandidates(root, excludedNames)).filter(isAppSource);
+      const files: { path: string; text: string }[] = [];
+      for (const file of candidates.slice(0, 3000)) {
+        const full = path.join(root, file);
+        const info = await stat(full).catch(() => null);
+        if (info === null || !info.isFile() || info.size > MAX_SEARCH_FILE_BYTES) continue;
+        files.push({ path: file, text: await readFile(full, "utf8").catch(() => "") });
+      }
+      return { ...mergeArchitecture(files), truncated: candidates.length > 3000 };
+    },
 
     gitStatus: async ({ root }, context) => {
       const result = await run("git", ["status", "--porcelain=v1", "-z", "-b", "--untracked-files=all"], {

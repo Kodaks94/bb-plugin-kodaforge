@@ -946,7 +946,7 @@ export function Workbench({
             onClick={() => dispatch({ type: "open", path: AGENTS_TAB })}
           >
             <span className="flex" style={{ color: activePath === AGENTS_TAB ? hues.yellow : undefined }}>
-              <Icon name="Target" className="size-5" />
+              <Icon name="Orbit" fallback="Sparkles" className="size-5" />
             </span>
           </button>
           {(
@@ -1071,6 +1071,7 @@ export function Workbench({
                                 setOpenRun(id);
                                 openSide("workflows");
                               }}
+                              onOpenFile={(path, line) => void openAt(path, line, 1)}
                             />
                           ) : null
                         }

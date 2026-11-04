@@ -209,6 +209,11 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: z.object({ result: z.unknown() }),
   },
+  /** The AI architecture the workspace's own code builds, for the Agent Network's App mode. */
+  appArchitecture: {
+    input: z.object({ scope: scopeSchema }).strict(),
+    output: hostContract.appArchitecture.output,
+  },
   /** MCP servers the workspace's agents can reach: names and transports only. */
   mcpServers: {
     input: z.object({ scope: scopeSchema }).strict(),
@@ -634,6 +639,11 @@ export default async function plugin(bb: BbPluginApi) {
         { root: resolved.root, context: { projectId: resolved.projectId, environmentId: resolved.environmentId, threadId: thread }, request },
         { hostId: resolved.hostId },
       );
+    },
+
+    async appArchitecture({ scope }) {
+      const resolved = await target(scope);
+      return host.call("appArchitecture", { root: resolved.root, excludedNames: await excluded() }, { hostId: resolved.hostId });
     },
 
     async mcpServers({ scope }) {

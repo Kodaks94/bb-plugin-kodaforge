@@ -82,10 +82,19 @@ left or right edge to split. Right-click a tab for close, pin and move commands.
 
 ## Agent Network
 
-⌘⇧A (or the target icon) opens this project's agents as a solar system around Koda:
-working agents close in, idle ones further out, sub-agents as moons, workflow runs as
-ringed planets, and MCP servers on the outer belt. Click anything to open it. MCP servers
-are read from the agents' configs by name only; commands, URLs and env never leave the host.
+⌘⇧A (or the orbit icon) opens the Agent Network, a solar system around Koda, in two modes:
+
+- **Coding:** the agents working on this project. Working agents close in, idle ones further
+  out, sub-agents as moons, workflow runs as ringed planets, and MCP servers on the outer
+  belt. Click anything to open it. MCP servers are read from the agents' configs by name
+  only; commands, URLs and env never leave the host.
+- **App:** the AI architecture the project's own code builds. Its agents (pydantic-ai,
+  OpenAI Agents, LangChain, CrewAI, Agno, Mastra, Vercel AI SDK, Claude Agent SDK, or direct
+  model calls) are planets with their tools as moons. Its MCP servers sit further out with
+  their tools, and the models and `SKILL.md` skills it uses are on the outer belt. Click
+  anything to open its code at that line. The map is read from the source (nothing runs),
+  skips tests and the coding agents' own folders, and links things by name and file, so
+  treat it as a map, not a proof.
 
 ## Settings
 
