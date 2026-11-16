@@ -108,6 +108,10 @@ export function EditorGroup({
       scrollBeyondLastLine: false,
       fixedOverflowWidgets: true,
       glyphMargin: true,
+      // Off: in non-Latin prose (Cyrillic, Greek) nearly every word holds a letter
+      // that resembles a Latin one, so each line carries many highlight boxes
+      // and vertical scrolling stutters.
+      unicodeHighlight: { ambiguousCharacters: false },
     });
     editor.current = instance;
     const report = () => {
