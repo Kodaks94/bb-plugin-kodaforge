@@ -59,8 +59,14 @@ function IdePage({ subPath }: PluginNavPanelProps) {
     );
   }, [rpc]);
 
+  // After the last tab is closed the page stays empty; without this the first
+  // workspace in the list reopened by itself, as if the page had reloaded.
+  const [closedAll, setClosedAll] = useState(false);
   const routed = parseScope(subPath);
-  const fallback = workspaces?.[0]?.ref ?? null;
+  useEffect(() => {
+    if (routed !== null) setClosedAll(false);
+  }, [subPath]);
+  const fallback = closedAll ? null : (workspaces?.[0]?.ref ?? null);
   const activeScope = routed ?? fallback;
   const active = activeScope === null ? null : `${activeScope.kind}/${activeScope.id}`;
 
@@ -81,14 +87,40 @@ function IdePage({ subPath }: PluginNavPanelProps) {
     if (dirtySnapshot[key] && !window.confirm(`${labelFor(key).title} has unsaved changes. Close it anyway?`)) return;
     const next = closeTab(open, key, active ?? key);
     setOpen(next.list);
-    if (key === active) go(next.active ?? "");
+    if (key === active) {
+      if (next.active === null) setClosedAll(true);
+      go(next.active ?? "");
+    }
+  };
+  const closeAll = () => {
+    const unsaved = open.filter((key) => dirtySnapshot[key]).length;
+    if (unsaved > 0 && !window.confirm(`${unsaved} open workspace${unsaved === 1 ? " has" : "s have"} unsaved changes. Close all anyway?`)) return;
+    setOpen([]);
+    setClosedAll(true);
+    go("");
   };
 
   const byKey = useMemo(() => new Map((workspaces ?? []).map((w) => [`${w.ref.kind}/${w.ref.id}`, w])), [workspaces]);
+  // A workspace opened by link (a thread, or an environment the picker does not
+  // list) has no entry above: ask the server for its project and machine.
+  const [resolved, setResolved] = useState<Record<string, { title: string; detail: string; projectId: string | null }>>({});
+  useEffect(() => {
+    if (workspaces === null) return;
+    for (const key of open) {
+      const scope = parseScope(key);
+      if (scope === null || byKey.has(key) || resolved[key] !== undefined) continue;
+      rpc.call("resolve", { scope }).then(
+        (found) => setResolved((all) => ({ ...all, [key]: { title: found.label, detail: found.sublabel, projectId: found.projectId } })),
+        () => undefined,
+      );
+    }
+  }, [open, workspaces]);
   function labelFor(key: string): { title: string; detail: string; projectId: string | null; kind: string } {
     const option = byKey.get(key);
     const kind = key.split("/")[0]!;
     if (option) return { title: option.label, detail: option.sublabel, projectId: option.projectId, kind: option.worktree ? "worktree" : kind === "thread" ? "thread" : "folder" };
+    const found = resolved[key];
+    if (found) return { ...found, kind: kind === "thread" ? "thread" : "folder" };
     return { title: kind === "thread" ? "Thread workspace" : kind === "environment" ? "Workspace" : "Project", detail: "", projectId: null, kind };
   }
 
@@ -100,10 +132,19 @@ function IdePage({ subPath }: PluginNavPanelProps) {
       groups={groupWorkspaces(workspaces ?? [])}
       onSelect={go}
       onClose={close}
+      onCloseAll={closeAll}
     />
   );
 
   if (error !== null) return <div role="alert" className="p-6 text-sm text-destructive">{error}</div>;
+  if (closedAll && (active === null || activeScope === null)) {
+    return (
+      <div className="h-full min-h-0">
+        <div className="flex items-center gap-2 border-b border-border px-2 py-1.5">{tabs}</div>
+        <p role="status" className="p-6 text-sm text-muted-foreground">No workspace is open. Use + to open one.</p>
+      </div>
+    );
+  }
   if (active === null || activeScope === null) {
     return (
       <div role="status" className="p-6 text-sm text-muted-foreground">
@@ -147,6 +188,7 @@ function WorkspaceTabs({
   groups,
   onSelect,
   onClose,
+  onCloseAll,
 }: {
   open: string[];
   active: string | null;
@@ -154,6 +196,7 @@ function WorkspaceTabs({
   groups: ReturnType<typeof groupWorkspaces<WorkspaceOption>>;
   onSelect(key: string): void;
   onClose(key: string): void;
+  onCloseAll(): void;
 }) {
   const dirty = useDirtyWorkspaces();
   const [menu, setMenu] = useState(false);
@@ -207,6 +250,16 @@ function WorkspaceTabs({
           );
         })}
       </div>
+      {open.length > 1 ? (
+        <button
+          type="button"
+          title="Close all workspaces"
+          className="h-7 shrink-0 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={onCloseAll}
+        >
+          Close all
+        </button>
+      ) : null}
       <div className="relative shrink-0" ref={menuRef}>
         <button
           type="button"
