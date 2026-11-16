@@ -370,7 +370,13 @@ function attachTerminal(sdk: ReturnType<typeof useSdk>, terminalId: string): Liv
   };
   const focusIn = () => entry.onFocus?.();
   holder.addEventListener("focusin", focusIn);
+  // Typing must not wait for the idle poll interval: wake the poll loop and keep
+  // it fast for a moment, so the echo shows up right after the keystroke.
+  let burstUntil = 0;
+  let wake: (() => void) | null = null;
   const input = terminal.onData((data) => {
+    burstUntil = Date.now() + 1500;
+    wake?.();
     void sdk.terminals.input({ terminalId, dataBase64: encodeBase64(data) }).catch(() => undefined);
   });
   const resize = terminal.onResize(({ cols, rows }) => {
@@ -401,8 +407,11 @@ function attachTerminal(sdk: ReturnType<typeof useSdk>, terminalId: string): Liv
       } catch {
         // transient; retry with backoff
       }
-      delay = nextPollDelay(delay, hadData, entry.visible);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay = Date.now() < burstUntil ? 30 : nextPollDelay(delay, hadData, entry.visible);
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+        setTimeout(resolve, delay);
+      });
     }
   };
   void poll();
