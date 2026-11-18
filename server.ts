@@ -285,6 +285,21 @@ export default async function plugin(bb: BbPluginApi) {
     }
   }
 
+  // A project can live on several machines: every workspace label says which one.
+  const hostNames = new Map<string, string>();
+  async function onHost(text: string, hostId: string): Promise<string> {
+    let name = hostNames.get(hostId);
+    if (name === undefined) {
+      try {
+        name = (await bb.sdk.hosts.get({ hostId })).name;
+        hostNames.set(hostId, name);
+      } catch {
+        return text;
+      }
+    }
+    return `${text} · ${name}`;
+  }
+
   async function resolveScope(scope: Scope): Promise<ResolvedScope> {
     let environmentId: string | null = null;
     let projectId: string | null = null;
@@ -306,7 +321,7 @@ export default async function plugin(bb: BbPluginApi) {
           root: environment.path,
           hostId: environment.hostId,
           label: owner?.name ?? "Workspace",
-          sublabel: environment.branchName ?? environment.name ?? "workspace",
+          sublabel: await onHost(environment.branchName ?? environment.name ?? "workspace", environment.hostId),
           projectId: environment.projectId,
           environmentId,
         };
@@ -323,7 +338,7 @@ export default async function plugin(bb: BbPluginApi) {
       root: source.path,
       hostId: source.hostId,
       label: found.name,
-      sublabel: "project checkout",
+      sublabel: await onHost("project checkout", source.hostId),
       projectId,
       environmentId: null,
     };
@@ -402,10 +417,11 @@ export default async function plugin(bb: BbPluginApi) {
       const workspaces: WorkspaceOption[] = [];
       for (const entry of projects) {
         if (entry.sources.length > 0) {
+          const source = entry.sources.find((item) => item.isDefault) ?? entry.sources[0]!;
           workspaces.push({
             ref: { kind: "project", id: entry.id },
             label: entry.name,
-            sublabel: entry.kind === "personal" ? "personal files" : "project checkout",
+            sublabel: entry.kind === "personal" ? "personal files" : await onHost("project checkout", source.hostId),
             projectId: entry.id,
             kind: "project",
           });
@@ -429,7 +445,10 @@ export default async function plugin(bb: BbPluginApi) {
           workspaces.push({
             ref: { kind: "environment", id: environmentId },
             label: entry.name,
-            sublabel: thread.environmentBranchName ?? thread.environmentName ?? "worktree",
+            sublabel:
+              thread.environmentHostId === null
+                ? (thread.environmentBranchName ?? thread.environmentName ?? "worktree")
+                : await onHost(thread.environmentBranchName ?? thread.environmentName ?? "worktree", thread.environmentHostId),
             projectId: entry.id,
             kind: "environment",
             worktree: true,
