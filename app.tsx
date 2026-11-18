@@ -67,7 +67,13 @@ function IdePage({ subPath }: PluginNavPanelProps) {
     if (routed !== null) setClosedAll(false);
   }, [subPath]);
   const fallback = closedAll ? null : (workspaces?.[0]?.ref ?? null);
-  const activeScope = routed ?? fallback;
+  const [closingRoute, setClosingRoute] = useState<{ from: string; next: string | null } | null>(null);
+  useEffect(() => {
+    setClosingRoute((route) => route && route.from !== subPath ? null : route);
+  }, [subPath]);
+  const activeScope = closingRoute?.from === subPath
+    ? (closingRoute.next ? parseScope(closingRoute.next) : null)
+    : routed ?? fallback;
   const active = activeScope === null ? null : `${activeScope.kind}/${activeScope.id}`;
 
   // Workspaces open as tabs; each stays mounted so its buffers and terminals survive switching.
@@ -83,22 +89,25 @@ function IdePage({ subPath }: PluginNavPanelProps) {
   }, [open]);
 
   const go = (key: string) => navigate.toPluginPanel(PANEL_PATH, { subPath: key });
+  function finishClose(list: string[], next: string | null) {
+    for (const key of open) if (!list.includes(key)) setWorkspaceDirty(key, false);
+    setOpen(list);
+    if (next === active) return;
+    setClosedAll(next === null);
+    // The host publishes the new route asynchronously. Show the survivor immediately.
+    setClosingRoute({ from: subPath, next });
+    go(next ?? "");
+  }
   const close = (key: string) => {
     if (dirtySnapshot[key] && !window.confirm(`${labelFor(key).title} has unsaved changes. Close it anyway?`)) return;
     const next = closeTab(open, key, active ?? key);
-    setOpen(next.list);
-    if (key === active) {
-      if (next.active === null) setClosedAll(true);
-      go(next.active ?? "");
-    }
+    finishClose(next.list, next.active);
   };
-  const closeAll = () => {
-    const unsaved = open.filter((key) => dirtySnapshot[key]).length;
-    if (unsaved > 0 && !window.confirm(`${unsaved} open workspace${unsaved === 1 ? " has" : "s have"} unsaved changes. Close all anyway?`)) return;
-    setOpen([]);
-    setClosedAll(true);
-    go("");
-  };
+  function closeGroup(keep: string | null) {
+    const unsaved = open.filter((key) => key !== keep && dirtySnapshot[key]).length;
+    if (unsaved && !window.confirm(`${unsaved} workspace(s) have unsaved changes. Close anyway?`)) return;
+    finishClose(keep ? [keep] : [], keep);
+  }
 
   const byKey = useMemo(() => new Map((workspaces ?? []).map((w) => [`${w.ref.kind}/${w.ref.id}`, w])), [workspaces]);
   // A workspace opened by link (a thread, or an environment the picker does not
@@ -132,7 +141,8 @@ function IdePage({ subPath }: PluginNavPanelProps) {
       groups={groupWorkspaces(workspaces ?? [])}
       onSelect={go}
       onClose={close}
-      onCloseAll={closeAll}
+      onCloseOthers={closeGroup}
+      onCloseAll={() => closeGroup(null)}
     />
   );
 
@@ -155,19 +165,22 @@ function IdePage({ subPath }: PluginNavPanelProps) {
   const shown = open.includes(active) ? open : [...open, active];
   return (
     <div className="h-full min-h-0">
-      {shown.map((key) => {
-        const scope = parseScope(key)!;
-        return (
-          <div key={key} className={key === active ? "h-full min-h-0" : "hidden"}>
-            <Workbench
-              scope={scope}
-              header={tabs}
-              active={key === active}
-              onDirtyChange={(value) => setWorkspaceDirty(key, value)}
-            />
-          </div>
-        );
-      })}
+      {shown.map((key) => (
+        <WorkspaceView key={key} workspaceKey={key} active={key === active} header={tabs} />
+      ))}
+    </div>
+  );
+}
+
+function WorkspaceView({ workspaceKey, active, header }: {
+  workspaceKey: string; active: boolean; header: React.ReactNode;
+}) {
+  // Workbench reloads Monaco and its buffers whenever the scope identity changes.
+  const scope = useMemo(() => parseScope(workspaceKey)!, [workspaceKey]);
+  return (
+    <div className={active ? "h-full min-h-0" : "hidden"}>
+      <Workbench scope={scope} active={active} header={header}
+        onDirtyChange={(value) => setWorkspaceDirty(workspaceKey, value)} />
     </div>
   );
 }
@@ -188,6 +201,7 @@ function WorkspaceTabs({
   groups,
   onSelect,
   onClose,
+  onCloseOthers,
   onCloseAll,
 }: {
   open: string[];
@@ -196,9 +210,30 @@ function WorkspaceTabs({
   groups: ReturnType<typeof groupWorkspaces<WorkspaceOption>>;
   onSelect(key: string): void;
   onClose(key: string): void;
+  onCloseOthers(key: string): void;
   onCloseAll(): void;
 }) {
   const dirty = useDirtyWorkspaces();
+  const [context, setContext] = useState<{ key: string; x: number; y: number } | null>(null);
+  const contextRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!context) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!contextRef.current?.contains(event.target as Node)) setContext(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setContext(null);
+    };
+    const blur = () => setContext(null);
+    window.addEventListener("pointerdown", dismiss, true);
+    window.addEventListener("keydown", escape);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss, true);
+      window.removeEventListener("keydown", escape);
+      window.removeEventListener("blur", blur);
+    };
+  }, [context]);
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -226,9 +261,14 @@ function WorkspaceTabs({
               className={`group flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border pl-2 pr-1 text-xs ${
                 selected ? "border-border bg-background text-foreground shadow-sm" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu(false);
+                setContext({ key, x: event.clientX, y: event.clientY });
+              }}
               onClick={() => onSelect(key)}
               onAuxClick={(event) => event.button === 1 && onClose(key)}
-              onKeyDown={(event) => event.key === "Enter" && onSelect(key)}
+              onKeyDown={(event) => event.target === event.currentTarget && event.key === "Enter" && onSelect(key)}
             >
               <span className="size-2 shrink-0 rounded-sm" style={{ background: hueFor(label.projectId) }} />
               <Icon name={label.kind === "worktree" ? "GitBranch" : label.kind === "thread" ? "MessageSquare" : "Folder"} className="size-3.5 shrink-0" />
@@ -250,16 +290,18 @@ function WorkspaceTabs({
           );
         })}
       </div>
-      {open.length > 1 ? (
-        <button
-          type="button"
-          title="Close all workspaces"
-          className="h-7 shrink-0 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={onCloseAll}
-        >
-          Close all
-        </button>
-      ) : null}
+      {context && open.includes(context.key) && (
+        <div ref={contextRef} role="group" aria-label="Workspace tab actions"
+          className="fixed z-50 grid w-36 rounded-md border border-border bg-background p-1 text-xs shadow-md"
+          style={{ left: Math.max(0, Math.min(context.x, window.innerWidth - 148)),
+                   top: Math.max(0, Math.min(context.y, window.innerHeight - 72)) }}>
+          <button type="button" autoFocus disabled={open.length < 2}
+            className="rounded px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50"
+            onClick={() => { setContext(null); onCloseOthers(context.key); }}>Close others</button>
+          <button type="button" className="rounded px-2 py-1.5 text-left hover:bg-muted"
+            onClick={() => { setContext(null); onCloseAll(); }}>Close all</button>
+        </div>
+      )}
       <div className="relative shrink-0" ref={menuRef}>
         <button
           type="button"
