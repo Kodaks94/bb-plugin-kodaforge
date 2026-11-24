@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { closeTab, MAX_OPEN, openTab, parseSaved } from "./open-workspaces.js";
+import { closeTab, MAX_OPEN, openTab, parseSaved, tabSet } from "./open-workspaces.js";
 
 it("opens each workspace once, after the active tab", () => {
   let list = openTab([], "project/a");
@@ -15,6 +15,23 @@ it("drops the oldest tab past the limit, never the one being opened", () => {
   expect(list).toHaveLength(MAX_OPEN);
   expect(list.at(-1)).toBe(`project/p${MAX_OPEN + 1}`);
   expect(list).not.toContain("project/p0");
+});
+
+it("puts a project's workspaces in one set and every thread in its own", () => {
+  expect(tabSet("project/a", null)).toBe("project/a");
+  expect(tabSet("environment/e1", "a")).toBe("project/a");
+  expect(tabSet("environment/e1", null)).toBe("environment/e1");
+  expect(tabSet("thread/t1", "a")).toBe("thread/t1");
+});
+
+it("keeps other sets' tabs when one set is full", () => {
+  const setOf = (key: string) => (key.startsWith("thread/") ? key : "project/a");
+  let list = openTab([], "thread/t1", null, setOf);
+  for (let i = 0; i < MAX_OPEN + 1; i++) list = openTab(list, `environment/e${i}`, list.at(-1), setOf);
+  expect(list).toContain("thread/t1");
+  expect(list).not.toContain("environment/e0");
+  expect(list).toHaveLength(MAX_OPEN + 1);
+  expect(openTab(["environment/e1", "thread/t1"], "environment/e2", "thread/t1", setOf).at(-1)).toBe("environment/e2");
 });
 
 it("closing the active tab shows its right neighbour, else the left one", () => {

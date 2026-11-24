@@ -3,6 +3,13 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [Unreleased]
+
+### Added
+- **Separate tabs per project** (plugin setting, off by default). The tab strip shows only the
+  open project's workspaces, and a thread its own. Other projects' tabs come back with their
+  project, and unsaved files in them are kept.
+
 ## [0.7.0] - 2026-11-04
 
 ### Added
