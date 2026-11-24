@@ -103,10 +103,16 @@ function IdePage({ subPath }: PluginNavPanelProps) {
     const next = closeTab(open, key, active ?? key);
     finishClose(next.list, next.active);
   };
-  function closeGroup(keep: string | null) {
+  function closeOthers(keep: string): boolean {
     const unsaved = open.filter((key) => key !== keep && dirtySnapshot[key]).length;
-    if (unsaved && !window.confirm(`${unsaved} workspace(s) have unsaved changes. Close anyway?`)) return;
-    finishClose(keep ? [keep] : [], keep);
+    if (unsaved && !window.confirm(`${unsaved} workspace(s) have unsaved changes. Close anyway?`)) return false;
+    finishClose([keep], keep);
+    return true;
+  }
+  // Close all leaves an empty editor, not an empty page: this workspace stays, with its tree.
+  const [closeFiles, setCloseFiles] = useState<{ key: string; tick: number } | null>(null);
+  function closeAll(keep: string) {
+    if (closeOthers(keep)) setCloseFiles((last) => ({ key: keep, tick: (last?.tick ?? 0) + 1 }));
   }
 
   const byKey = useMemo(() => new Map((workspaces ?? []).map((w) => [`${w.ref.kind}/${w.ref.id}`, w])), [workspaces]);
@@ -141,8 +147,8 @@ function IdePage({ subPath }: PluginNavPanelProps) {
       groups={groupWorkspaces(workspaces ?? [])}
       onSelect={go}
       onClose={close}
-      onCloseOthers={closeGroup}
-      onCloseAll={() => closeGroup(null)}
+      onCloseOthers={closeOthers}
+      onCloseAll={closeAll}
     />
   );
 
@@ -166,20 +172,20 @@ function IdePage({ subPath }: PluginNavPanelProps) {
   return (
     <div className="h-full min-h-0">
       {shown.map((key) => (
-        <WorkspaceView key={key} workspaceKey={key} active={key === active} header={tabs} />
+        <WorkspaceView key={key} workspaceKey={key} active={key === active} header={tabs} closeFilesTick={closeFiles?.key === key ? closeFiles.tick : 0} />
       ))}
     </div>
   );
 }
 
-function WorkspaceView({ workspaceKey, active, header }: {
-  workspaceKey: string; active: boolean; header: React.ReactNode;
+function WorkspaceView({ workspaceKey, active, header, closeFilesTick }: {
+  workspaceKey: string; active: boolean; header: React.ReactNode; closeFilesTick: number;
 }) {
   // Workbench reloads Monaco and its buffers whenever the scope identity changes.
   const scope = useMemo(() => parseScope(workspaceKey)!, [workspaceKey]);
   return (
     <div className={active ? "h-full min-h-0" : "hidden"}>
-      <Workbench scope={scope} active={active} header={header}
+      <Workbench scope={scope} active={active} header={header} closeFilesTick={closeFilesTick}
         onDirtyChange={(value) => setWorkspaceDirty(workspaceKey, value)} />
     </div>
   );
@@ -211,7 +217,7 @@ function WorkspaceTabs({
   onSelect(key: string): void;
   onClose(key: string): void;
   onCloseOthers(key: string): void;
-  onCloseAll(): void;
+  onCloseAll(key: string): void;
 }) {
   const dirty = useDirtyWorkspaces();
   const [context, setContext] = useState<{ key: string; x: number; y: number } | null>(null);
@@ -299,7 +305,7 @@ function WorkspaceTabs({
             className="rounded px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50"
             onClick={() => { setContext(null); onCloseOthers(context.key); }}>Close others</button>
           <button type="button" className="rounded px-2 py-1.5 text-left hover:bg-muted"
-            onClick={() => { setContext(null); onCloseAll(); }}>Close all</button>
+            onClick={() => { setContext(null); onCloseAll(context.key); }}>Close all</button>
         </div>
       )}
       <div className="relative shrink-0" ref={menuRef}>

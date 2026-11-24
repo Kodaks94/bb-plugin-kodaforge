@@ -96,12 +96,15 @@ export function Workbench({
   scope,
   header,
   active = true,
+  closeFilesTick = 0,
   onDirtyChange,
 }: {
   scope: Scope;
   header?: ReactNode;
   /** False while another workspace tab is showing: stays alive (buffers, terminals) but takes no keys. */
   active?: boolean;
+  /** Grows when every file tab is to close (the workspace tab's Close all). */
+  closeFilesTick?: number;
   /** Reports whether any open file has unsaved changes, for the workspace tab's dot. */
   onDirtyChange?(dirty: boolean): void;
 }) {
@@ -450,6 +453,18 @@ export function Workbench({
     },
     [state.groups, docs],
   );
+
+  // Pinned and unsaved files stay, as with Close All in a group. Last group first: an emptied one goes away.
+  const closedFilesTick = useRef(closeFilesTick);
+  useEffect(() => {
+    if (closeFilesTick === closedFilesTick.current) return;
+    closedFilesTick.current = closeFilesTick;
+    if (closeFilesTick === 0) return;
+    for (let group = state.groups.length - 1; group >= 0; group--) {
+      dispatch({ type: "closeAll", group, keep: state.groups[group]!.tabs.filter((path) => docs.isDirty(path)) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closeFilesTick]);
 
   /** ⌘⇧T: bring back the most recently closed tab that can still be opened. */
   const reopenClosed = () => {

@@ -120,6 +120,11 @@ describe("tab management", () => {
     expect(editorReducer(state, { type: "forgetClosed", path: "c" }).closed).toEqual(["a"]);
   });
 
+  it("closing every group, last first, leaves one group with pinned and unsaved tabs only", () => {
+    let state = run({ type: "open", path: "a" }, { type: "open", path: "b" }, { type: "open", path: "c", toSide: true });
+    for (let group = state.groups.length - 1; group >= 0; group--) state = editorReducer(state, { type: "closeAll", group, keep: ["b"] });
+    expect(tabs(state)).toEqual([["b"]]);
+  });
   it("cycles tabs with wrap-around", () => {
     expect(editorReducer(three(), { type: "cycle", delta: 1 }).groups[0]!.active).toBe("a");
     expect(editorReducer(three(), { type: "cycle", delta: -1 }).groups[0]!.active).toBe("b");
