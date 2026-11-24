@@ -314,7 +314,7 @@ export function Workbench({
   const openFile = useCallback(
     async (path: string, toSide = false) => {
       try {
-        if (await docs.open(path)) {
+        if (await docs.openTab(path)) {
           trackedPaths.current.add(path);
           dispatch({ type: "open", path, toSide });
         }
@@ -412,7 +412,7 @@ export function Workbench({
         const tabs: string[] = [];
         for (const path of group.tabs) {
           if (isVirtualTab(path)) tabs.push(path);
-          else if (await docs.open(path).catch(() => false)) tabs.push(path);
+          else if (await docs.openTab(path).catch(() => false)) tabs.push(path);
         }
         kept.push({ tabs, active: group.active, pinned: group.pinned });
       }
@@ -1049,6 +1049,7 @@ export function Workbench({
                         monaco={monaco}
                         docs={docs}
                         scope={scope}
+                        assetsUrl={assetsUrl}
                         group={group}
                         index={index}
                         focused={index === state.focused}

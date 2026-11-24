@@ -228,6 +228,11 @@ export const rpcContract = defineRpcContract({
     input: z.object({ scope: scopeSchema, python: z.string().max(4096).nullable() }).strict(),
     output: z.object({ selected: z.string().nullable() }),
   },
+  /** A URL the browser can load a file's bytes from (images, video, documents). */
+  previewUrl: {
+    input: z.object({ scope: scopeSchema, path: relPath }).strict(),
+    output: z.object({ url: z.string() }),
+  },
   monacoAssets: {
     input: z.null(),
     output: z.object({ baseUrl: z.string(), expiresAtMs: z.number() }),
@@ -672,6 +677,12 @@ export default async function plugin(bb: BbPluginApi) {
       if (!envs.some((env) => env.python === python)) throw new Error("That interpreter was not found in this workspace's environments");
       await bb.storage.kv.set(key, python);
       return { selected: python };
+    },
+
+    async previewUrl({ scope, path: relativePath }) {
+      const { hostId, rootPath, name } = await files.previewSource(await target(scope), relativePath);
+      const { baseUrl } = await bb.sdk.files.createPreview({ hostId, rootPath, ttlMs: PREVIEW_TTL_MS });
+      return { url: `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(name)}` };
     },
 
     async monacoAssets() {
