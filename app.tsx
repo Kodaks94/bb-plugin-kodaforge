@@ -163,6 +163,11 @@ function WorkspaceTabs({
   const dirty = useDirtyWorkspaces();
   const [menu, setMenu] = useState<{ left: number; top: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // More tabs than fit: keep the active one in view.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [active, open.length]);
   useEffect(() => {
     if (menu === null) return;
     const away = (event: MouseEvent) => {
@@ -174,7 +179,7 @@ function WorkspaceTabs({
 
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <div role="tablist" aria-label="Open workspaces" className="flex min-w-0 items-center gap-1 overflow-x-auto">
+      <div ref={listRef} role="tablist" aria-label="Open workspaces" className="flex min-w-0 items-center gap-1 overflow-x-auto">
         {open.map((key) => {
           const label = labelFor(key);
           const selected = key === active;

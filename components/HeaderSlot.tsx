@@ -13,7 +13,7 @@ export function HeaderSlot() {
   return (
     <>
       {/* The bar already shows Koda and the name: give Koda his own colour back there. */}
-      <style>{`header:has([data-kodaforge-header]:not(:empty)) [data-icon="KodaBear"] { color: ${hues.orange}; }`}</style>
+      <style>{`header:has([data-kodaforge-header]:not(:empty)) [data-icon="KodaBear"] { color: ${hues.orange}; } [data-kodaforge-header] [role="tablist"] { scrollbar-width: none; }`}</style>
       {/* Only the width of its content, so the rest of the bar still drags the window. */}
       <div ref={slot} data-kodaforge-header className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" />
     </>
