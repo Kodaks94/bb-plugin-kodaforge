@@ -5,6 +5,7 @@ import {
   definePluginApp,
   useBbNavigate,
   useRpc,
+  useSettings,
   type ExperimentalThreadTabProps,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
@@ -12,6 +13,7 @@ import type { rpcContract, Scope, WorkspaceOption } from "./server";
 import { groupWorkspaces } from "@/lib/workspaces";
 import { Workbench } from "@/components/Workbench";
 import { KodaIcon } from "@/components/KodaIcon";
+import { HeaderSlot, useHeaderSlot } from "@/components/HeaderSlot";
 import { Icon } from "@/components/ui/icon";
 import { closeTab, openTab, parseSaved } from "@/lib/open-workspaces";
 
@@ -59,6 +61,8 @@ function IdePage({ subPath }: PluginNavPanelProps) {
     );
   }, [rpc]);
 
+  const { values: pluginSettings } = useSettings();
+  const [page, headerSlot] = useHeaderSlot(pluginSettings?.compactHeader === true);
   const routed = parseScope(subPath);
   const fallback = workspaces?.[0]?.ref ?? null;
   const activeScope = routed ?? fallback;
@@ -113,7 +117,7 @@ function IdePage({ subPath }: PluginNavPanelProps) {
   }
   const shown = open.includes(active) ? open : [...open, active];
   return (
-    <div className="h-full min-h-0">
+    <div ref={page} className="h-full min-h-0">
       {shown.map((key) => {
         const scope = parseScope(key)!;
         return (
@@ -122,6 +126,7 @@ function IdePage({ subPath }: PluginNavPanelProps) {
               scope={scope}
               header={tabs}
               active={key === active}
+              headerSlot={headerSlot}
               onDirtyChange={(value) => setWorkspaceDirty(key, value)}
             />
           </div>
@@ -156,12 +161,12 @@ function WorkspaceTabs({
   onClose(key: string): void;
 }) {
   const dirty = useDirtyWorkspaces();
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<{ left: number; top: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!menu) return;
+    if (menu === null) return;
     const away = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setMenu(false);
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
     };
     window.addEventListener("mousedown", away);
     return () => window.removeEventListener("mousedown", away);
@@ -212,14 +217,18 @@ function WorkspaceTabs({
           type="button"
           aria-label="Open another workspace"
           title="Open another workspace"
-          aria-expanded={menu}
+          aria-expanded={menu !== null}
           className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={() => setMenu((value) => !value)}
+          onClick={(event) => {
+            // Fixed, and kept on screen: in the title bar the button can be far right.
+            const box = event.currentTarget.getBoundingClientRect();
+            setMenu(menu === null ? { left: Math.max(8, Math.min(box.left, window.innerWidth - 296)), top: box.bottom + 4 } : null);
+          }}
         >
           <Icon name="Plus" className="size-4" />
         </button>
         {menu ? (
-          <div role="menu" className="absolute left-0 top-8 z-50 max-h-96 w-72 overflow-y-auto rounded-lg border border-border bg-popover py-1 text-[13px] text-popover-foreground shadow-[0_12px_32px_rgba(0,0,0,0.28)]">
+          <div role="menu" style={menu} className="fixed z-50 max-h-96 w-72 overflow-y-auto rounded-lg border border-border bg-popover py-1 text-[13px] text-popover-foreground shadow-[0_12px_32px_rgba(0,0,0,0.28)]">
             {groups.length === 0 ? <p className="px-3 py-2 text-xs text-muted-foreground">No workspaces yet.</p> : null}
             {groups.map((group) => (
               <div key={group.projectId} className="py-1">
@@ -237,7 +246,7 @@ function WorkspaceTabs({
                       role="menuitem"
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
                       onClick={() => {
-                        setMenu(false);
+                        setMenu(null);
                         onSelect(key);
                       }}
                     >
@@ -273,6 +282,7 @@ export default definePluginApp((app) => {
     icon: "KodaBear",
     path: PANEL_PATH,
     component: IdePage,
+    headerContent: HeaderSlot,
   });
   app.slots.experimental_tab({
     id: "forge",

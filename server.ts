@@ -246,6 +246,12 @@ export default async function plugin(bb: BbPluginApi) {
       description: "One name per line. Hidden from Quick Open, the explorer and search.",
       default: DEFAULT_EXCLUDED,
     },
+    compactHeader: {
+      type: "boolean",
+      label: "Workspace tabs in BB's title bar",
+      description: "One bar instead of two: the workspace tabs and panel switches move into BB's title bar. A narrow window keeps the separate bar.",
+      default: false,
+    },
     formatOnSave: {
       type: "boolean",
       label: "Format on save",
