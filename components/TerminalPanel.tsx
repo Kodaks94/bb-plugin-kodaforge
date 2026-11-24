@@ -33,7 +33,8 @@ interface Session {
 }
 
 export interface TerminalApi {
-  newTerminal(): void;
+  /** A new terminal tab, in the workspace root or in `cwd`. */
+  newTerminal(cwd?: string): void;
   split(): void;
   /** Run a program (no shell) in a new terminal tab; resolves when it exits. */
   run(argv: string[], title: string): Promise<number | null>;
@@ -65,6 +66,7 @@ export const TerminalPanel = forwardRef<
     }
   }, [settings.terminalFontSize, settings.terminalCursorStyle, settings.terminalCursorBlink, sessions]);
   const [layout, setLayout] = useState<TerminalLayout>(emptyLayout);
+  const pendingCwd = useRef<string | null>(null);
   const exitWaiters = useRef(new Map<string, (code: number | null) => void>());
   const storageKey = `kodaforge:terminals:${workspace.hostId}:${workspace.root}`;
   const hues = useHues();
@@ -77,18 +79,26 @@ export const TerminalPanel = forwardRef<
 
   useEffect(() => {
     let cancelled = false;
-    sdk.terminals.list({ scope }).then(
-      ({ sessions: all }) => {
+    Promise.all([
+      sdk.terminals.list({ scope }),
+      // Terminals opened in a subfolder belong to the machine, not to the workspace.
+      sdk.terminals.list({ scope: { kind: "host_path", hostId: workspace.hostId } }).catch(() => ({ sessions: [] })),
+    ]).then(
+      ([{ sessions: workspaceSessions }, { sessions: hostSessions }]) => {
         if (cancelled) return;
-        const ours = all
-          .filter((s) => s.title.startsWith(TITLE_PREFIX) && (s.status === "running" || s.status === "starting"))
-          .map((s) => ({ id: s.id, title: s.title, command: !/^Koda \d+$/.test(s.title) }));
         let saved: TerminalLayout | null = null;
         try {
           saved = JSON.parse(localStorage.getItem(storageKey) ?? "null");
         } catch {
           saved = null;
         }
+        // Of the machine's terminals, only the ones this workspace opened.
+        const known = new Set(Array.isArray(saved?.groups) ? saved.groups.flat() : []);
+        const listed = new Set(workspaceSessions.map((s) => s.id));
+        const all = [...workspaceSessions, ...hostSessions.filter((s) => known.has(s.id) && !listed.has(s.id))];
+        const ours = all
+          .filter((s) => s.title.startsWith(TITLE_PREFIX) && (s.status === "running" || s.status === "starting"))
+          .map((s) => ({ id: s.id, title: s.title, command: !/^Koda \d+$/.test(s.title) }));
         setSessions(ours);
         setLayout(restoreLayout(saved, ours.map((s) => s.id)));
       },
@@ -108,7 +118,7 @@ export const TerminalPanel = forwardRef<
   }, [layout, sessions, storageKey]);
 
   const create = useCallback(
-    async (split: boolean, start?: { argv: string[]; title: string }) => {
+    async (split: boolean, start?: { argv: string[]; title: string }, cwd?: string) => {
       const used = new Set(sessions?.map((s) => s.title));
       let n = 1;
       while (used.has(`${TITLE_PREFIX}${n}`)) n++;
@@ -117,9 +127,10 @@ export const TerminalPanel = forwardRef<
           cols: 100,
           rows: 24,
           title: start ? `${TITLE_PREFIX}${start.title}` : `${TITLE_PREFIX}${n}`,
-          scope: workspace.environmentId
-            ? { kind: "environment", environmentId: workspace.environmentId }
-            : { kind: "host_path", hostId: workspace.hostId, cwd: workspace.root },
+          scope:
+            cwd === undefined && workspace.environmentId
+              ? { kind: "environment", environmentId: workspace.environmentId }
+              : { kind: "host_path", hostId: workspace.hostId, cwd: cwd ?? workspace.root },
           ...(start ? { start: { mode: "argv" as const, argv: start.argv } } : {}),
         });
         setSessions((current) => [...(current ?? []), { id: session.id, title: session.title, command: start !== undefined }]);
@@ -150,7 +161,11 @@ export const TerminalPanel = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
-      newTerminal: () => void create(false),
+      newTerminal: (cwd) => {
+        // Until the running terminals are listed, a new one would be lost from the list.
+        if (cwd !== undefined && sessions === null) pendingCwd.current = cwd;
+        else void create(false, undefined, cwd);
+      },
       split: () => void create(true),
       clear: () => {
         if (layout.focused) liveTerminal(layout.focused)?.clear();
@@ -161,12 +176,16 @@ export const TerminalPanel = forwardRef<
         return new Promise<number | null>((resolve) => exitWaiters.current.set(id, resolve));
       },
     }),
-    [create, layout.focused],
+    [create, layout.focused, sessions],
   );
 
   // Opening the panel with no terminal starts one, as VS Code does.
   useEffect(() => {
-    if (visible && sessions !== null && sessions.length === 0) void create(false);
+    const cwd = pendingCwd.current;
+    if (sessions !== null && cwd !== null) {
+      pendingCwd.current = null;
+      void create(false, undefined, cwd);
+    } else if (visible && sessions !== null && sessions.length === 0) void create(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, sessions]);
 

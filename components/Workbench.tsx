@@ -982,6 +982,8 @@ export function Workbench({
                   explorer={
                     <Explorer
                       scope={scope}
+                      workspace={resolved}
+                      onOpenTerminal={(folder) => void terminalApi().then((api) => api?.newTerminal(folder))}
                       activePath={activePath}
                       changeTick={changeTick}
                       onOpen={(path, toSide) => void openFile(path, toSide)}
