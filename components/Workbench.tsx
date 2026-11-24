@@ -1,6 +1,7 @@
 // The VS Code-style shell: activity bar, side bar, editor groups, bottom panel
 // and status bar, for one workspace.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Group as PanelGroup, Panel, Separator } from "react-resizable-panels";
 import {
   experimental_useCodeTheme,
@@ -96,12 +97,15 @@ export function Workbench({
   scope,
   header,
   active = true,
+  headerSlot = null,
   onDirtyChange,
 }: {
   scope: Scope;
   header?: ReactNode;
   /** False while another workspace tab is showing: stays alive (buffers, terminals) but takes no keys. */
   active?: boolean;
+  /** BB's title bar, when the header goes there instead of a bar of its own. */
+  headerSlot?: HTMLElement | null;
   /** Reports whether any open file has unsaved changes, for the workspace tab's dot. */
   onDirtyChange?(dirty: boolean): void;
 }) {
@@ -875,6 +879,15 @@ export function Workbench({
     return <div className="p-6 text-sm text-muted-foreground" role="status">Loading the editor…</div>;
   }
 
+  const headerTools = (
+    <>
+      <DebugToolbar debug={debug} />
+      <LayoutButton icon="PanelLeft" label="Toggle Side Bar (⌘B)" active={view !== null} onClick={() => setView((v) => (v === null ? "explorer" : null))} />
+      <LayoutButton icon="Terminal" label="Toggle Panel (⌘J)" active={panel !== null} onClick={() => setPanel((p) => (p === null ? "terminal" : null))} />
+      <LayoutButton icon="MessageSquare" label="Toggle Chat (⌘⌥B)" active={sideOpen} onClick={() => setSideOpen((value) => !value)} />
+    </>
+  );
+
   return (
     <FileIconProvider baseUrl={assetsUrl}>
     <div
@@ -893,26 +906,36 @@ export function Workbench({
       }}
     >
       <style>{CHROME_CSS}</style>
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/30 pl-3 pr-1.5">
-        <span className="flex items-center gap-1.5 text-[13px] font-semibold tracking-tight">
-          <span style={{ color: hues.orange }} className="flex">
-            <KodaIcon className="size-4" />
-          </span>
-          KodaForge
-        </span>
-        <span className="h-4 w-px bg-border" />
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
-          {header ?? (
-            <span className="truncate" title={resolved.root}>
-              {resolved.label} · {resolved.sublabel}
+      {headerSlot !== null && header !== undefined ? (
+        active ? (
+          createPortal(
+            <>
+              <div className="flex min-w-0 flex-1 items-center gap-2">{header}</div>
+              <span className="h-4 w-px shrink-0 bg-border" />
+              <span className="flex shrink-0 items-center">{headerTools}</span>
+            </>,
+            headerSlot,
+          )
+        ) : null
+      ) : (
+        <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/30 pl-3 pr-1.5">
+          <span className="flex items-center gap-1.5 text-[13px] font-semibold tracking-tight">
+            <span style={{ color: hues.orange }} className="flex">
+              <KodaIcon className="size-4" />
             </span>
-          )}
-        </div>
-        <DebugToolbar debug={debug} />
-        <LayoutButton icon="PanelLeft" label="Toggle Side Bar (⌘B)" active={view !== null} onClick={() => setView((v) => (v === null ? "explorer" : null))} />
-        <LayoutButton icon="Terminal" label="Toggle Panel (⌘J)" active={panel !== null} onClick={() => setPanel((p) => (p === null ? "terminal" : null))} />
-        <LayoutButton icon="MessageSquare" label="Toggle Chat (⌘⌥B)" active={sideOpen} onClick={() => setSideOpen((value) => !value)} />
-      </header>
+            KodaForge
+          </span>
+          <span className="h-4 w-px bg-border" />
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
+            {header ?? (
+              <span className="truncate" title={resolved.root}>
+                {resolved.label} · {resolved.sublabel}
+              </span>
+            )}
+          </div>
+          {headerTools}
+        </header>
+      )}
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Views" className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border bg-muted/30 py-2">
           {VIEWS.map((entry) => (

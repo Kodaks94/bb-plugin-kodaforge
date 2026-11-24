@@ -3,6 +3,13 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [Unreleased]
+
+### Added
+- **Workspace tabs in BB's title bar** (plugin setting, off by default). One bar instead of
+  two: the tabs and panel switches move into the title bar, where Koda gets his colour. A
+  narrow window, an older BB or a thread tab keeps the separate bar.
+
 ## [0.7.0] - 2026-11-04
 
 ### Added
