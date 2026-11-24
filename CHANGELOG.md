@@ -3,6 +3,14 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [Unreleased]
+
+### Added
+- **File previews.** Images, video, audio, PDF, Word (.docx), spreadsheets (.xlsx, .xls, .ods)
+  and PowerPoint (.pptx) open in an editor tab instead of a log line. The tab splits, pins,
+  reopens, follows renames and reloads when the file changes on disk. Documents render in a
+  sandboxed frame with no network and no access to BB; their viewers load on first use.
+
 ## [0.7.0] - 2026-11-04
 
 ### Added

@@ -1,4 +1,4 @@
-import { resolveWithinRoot } from "./paths.js";
+import { pathApiFor, resolveWithinRoot } from "./paths.js";
 
 /** Bigger files open read-only: Monaco gets slow and a save round-trip is costly. */
 export const MAX_EDITABLE_BYTES = 2 * 1024 * 1024;
@@ -75,6 +75,13 @@ export function createWorkspaceFiles(files: FilesApi, checkPath: CheckPath) {
         sizeBytes: file.sizeBytes,
         readOnly: file.sizeBytes > MAX_EDITABLE_BYTES,
       };
+    },
+
+    /** Where BB can serve this file's bytes from: the same guard as a read, only its folder exposed. */
+    async previewSource(target: Target, relativePath: string): Promise<{ hostId: string; rootPath: string; name: string }> {
+      const path = await guard(target, relativePath);
+      const api = pathApiFor(target.root);
+      return { hostId: target.hostId, rootPath: api.dirname(path), name: api.basename(path) };
     },
 
     /**

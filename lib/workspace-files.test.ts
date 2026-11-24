@@ -88,6 +88,17 @@ describe("hash-guarded save", () => {
   });
 });
 
+describe("previewSource", () => {
+  it("exposes the file's own folder, and only inside the workspace", async () => {
+    const files = createWorkspaceFiles(fakeFiles(new Map()), allow);
+    expect(await files.previewSource(target, "docs/Итоги за май.docx")).toEqual({ hostId: "host_1", rootPath: "/work/repo/docs", name: "Итоги за май.docx" });
+    expect(await files.previewSource({ root: "C:\\work", hostId: "host_2" }, "docs/a.png")).toEqual({ hostId: "host_2", rootPath: "C:\\work\\docs", name: "a.png" });
+    await expect(files.previewSource(target, "../secret.png")).rejects.toThrow(/escapes/);
+    const symlinked = createWorkspaceFiles(fakeFiles(new Map()), async () => ({ ok: false, reason: "Path leaves the workspace through a symlink" }));
+    await expect(symlinked.previewSource(target, "link.png")).rejects.toThrow(/symlink/);
+  });
+});
+
 describe("tree mutations", () => {
   it("moves and removes inside the root, never the root itself", async () => {
     const disk = new Map([["/work/repo/a.ts", "a"]]);

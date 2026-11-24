@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/icon";
 import type { Documents } from "./use-documents";
 import type { Monaco } from "./monaco";
 import { DiffView } from "./DiffView";
+import { PreviewView } from "./PreviewView";
 import { parseDiffKey } from "@/lib/diff-key";
 import { FileIcon } from "./FileIcon";
 import { useHues } from "./colors";
@@ -57,6 +58,7 @@ export function EditorGroup({
   monaco,
   docs,
   scope,
+  assetsUrl,
   group,
   index,
   focused,
@@ -74,6 +76,8 @@ export function EditorGroup({
   monaco: Monaco;
   docs: Documents;
   scope: Scope;
+  /** Where the viewer bundles are served from. */
+  assetsUrl: string | null;
   group: Group;
   index: number;
   focused: boolean;
@@ -156,6 +160,7 @@ export function EditorGroup({
   const model = active === null || diff !== null || isVirtualTab(active) ? null : docs.model(active);
   const view = active !== null && active.startsWith("view:") ? (renderView?.(active) ?? null) : null;
   const meta = active === null ? null : docs.meta(active);
+  const preview = active === null ? null : docs.preview(active);
   useEffect(() => {
     const instance = editor.current;
     if (instance === null) return;
@@ -372,8 +377,13 @@ export function EditorGroup({
         onDragLeave={(event) => !event.currentTarget.contains(event.relatedTarget as Node | null) && setZone(null)}
         onDrop={(event) => dropTab(event, { zone: zoneAt(event) })}
       >
-        <div ref={host} className={`absolute inset-0 ${diff === null && view === null ? "" : "invisible"}`} />
+        <div ref={host} className={`absolute inset-0 ${diff === null && view === null && preview === null ? "" : "invisible"}`} />
         {view !== null ? <div className="absolute inset-0 bg-background">{view}</div> : null}
+        {active !== null && preview !== null ? (
+          <div className="absolute inset-0 bg-background">
+            <PreviewView key={active} scope={scope} path={active} revision={preview} assetsUrl={assetsUrl} />
+          </div>
+        ) : null}
         {zone !== null ? (
           <div
             aria-hidden

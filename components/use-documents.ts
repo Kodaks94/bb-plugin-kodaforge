@@ -5,6 +5,7 @@ import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type * as MonacoApi from "monaco-editor/esm/vs/editor/editor.api.js";
 import type { rpcContract, Scope } from "../server";
 import { onDiskChange, remapPath } from "@/lib/editor-state";
+import { previewKind } from "@/lib/preview";
 import type { Monaco } from "./monaco";
 
 type Model = MonacoApi.editor.ITextModel;
@@ -25,6 +26,8 @@ export function useDocuments(monaco: Monaco | null, scope: Scope, root: string |
   const instance = useRef(`w${++instanceCounter}`).current;
   const models = useRef(new Map<string, Model>());
   const meta = useRef(new Map<string, DocMeta>());
+  /** Open files that have no text model; the number grows when the file changes on disk. */
+  const previews = useRef(new Map<string, number>());
   const [version, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -40,6 +43,7 @@ export function useDocuments(monaco: Monaco | null, scope: Scope, root: string |
       for (const model of current.values()) model.dispose();
       current.clear();
       meta.current.clear();
+      previews.current.clear();
     };
   }, [scope.kind, scope.id]);
 
@@ -60,10 +64,7 @@ export function useDocuments(monaco: Monaco | null, scope: Scope, root: string |
       if (monaco === null) return false;
       if (models.current.has(path)) return true;
       const file = await rpc.call("read", { scope, path });
-      if (file.kind === "binary") {
-        log(`${path} is not a text file (${file.sizeBytes} bytes); not opened`);
-        return false;
-      }
+      if (file.kind === "binary") return false;
       if (models.current.has(path)) return true;
       const model = monaco.editor.createModel(file.content, undefined, uriFor(path));
       models.current.set(path, model);
@@ -82,8 +83,29 @@ export function useDocuments(monaco: Monaco | null, scope: Scope, root: string |
     [monaco, rpc, scope, uriFor, bump, log],
   );
 
+  /** Open a file for a tab: as text when it is text, else as a preview. */
+  const openTab = useCallback(
+    async (path: string): Promise<boolean> => {
+      if (monaco === null) return false;
+      if (previews.current.has(path)) return true;
+      if (previewKind(path) === null) {
+        if (await open(path)) return true;
+      } else {
+        // Media can be large: ask only whether the file is there.
+        const { url } = await rpc.call("previewUrl", { scope, path });
+        const found = await fetch(url, { method: "HEAD" });
+        if (!found.ok) throw new Error(found.status === 404 ? "the file does not exist" : `the preview answered ${found.status}`);
+      }
+      previews.current.set(path, 0);
+      bump();
+      return true;
+    },
+    [monaco, rpc, scope, open, bump],
+  );
+
   const close = useCallback(
     (path: string) => {
+      previews.current.delete(path);
       models.current.get(path)?.dispose();
       models.current.delete(path);
       meta.current.delete(path);
@@ -151,6 +173,8 @@ export function useDocuments(monaco: Monaco | null, scope: Scope, root: string |
   const syncFromDisk = useCallback(
     async (paths: readonly string[]) => {
       for (const path of paths) {
+        const revision = previews.current.get(path);
+        if (revision !== undefined) previews.current.set(path, revision + 1);
         const model = models.current.get(path);
         const info = meta.current.get(path);
         if (model === undefined || info === undefined || info.saving) continue;
@@ -180,6 +204,12 @@ export function useDocuments(monaco: Monaco | null, scope: Scope, root: string |
   const rename = useCallback(
     (from: string, to: string) => {
       if (monaco === null) return;
+      for (const [path, revision] of [...previews.current]) {
+        const next = remapPath(path, from, to);
+        if (next === null) continue;
+        previews.current.delete(path);
+        previews.current.set(next, revision);
+      }
       for (const [path, model] of [...models.current]) {
         const next = remapPath(path, from, to);
         const info = meta.current.get(path);
@@ -201,23 +231,26 @@ export function useDocuments(monaco: Monaco | null, scope: Scope, root: string |
   useRealtime("ide/changed", (payload) => {
     const event = payload as { root: string; paths: string[]; rescan: boolean };
     if (root === null || event.root !== root) return;
-    const open = [...models.current.keys()];
-    void syncFromDisk(event.rescan ? open : event.paths.filter((path) => models.current.has(path)));
+    const open = [...models.current.keys(), ...previews.current.keys()];
+    void syncFromDisk(event.rescan ? open : event.paths.filter((path) => open.includes(path)));
   });
 
   return {
     version,
     model: (path: string) => models.current.get(path) ?? null,
     meta: (path: string) => meta.current.get(path) ?? null,
+    /** Set when the open file is shown as a preview: its disk revision. */
+    preview: (path: string) => previews.current.get(path) ?? null,
     isDirty,
     open,
+    openTab,
     close,
     save,
     overwrite,
     reload,
     rename,
     syncFromDisk,
-    paths: () => [...models.current.keys()],
+    paths: () => [...models.current.keys(), ...previews.current.keys()],
     /** The workspace-relative path of a model URI that belongs to this workbench. */
     pathOf: (uri: { scheme: string; authority: string; path: string }) =>
       uri.scheme === "file" && uri.authority === instance ? uri.path.slice(1) : null,
