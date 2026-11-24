@@ -3,18 +3,31 @@
  * "environment/<id>", "thread/<id>"). Pure, so it can be tested and saved.
  */
 export const MAX_OPEN = 8;
+/** Enough for many projects' tab sets; each set still holds at most MAX_OPEN. */
+export const MAX_SAVED = 200;
 const KEY = /^(project|environment|thread)\/[^/\s]{1,200}$/;
 
 export function isWorkspaceKey(value: unknown): value is string {
   return typeof value === "string" && KEY.test(value);
 }
 
-/** Open `key` (once), placed after the active tab; the oldest tab drops off past the limit. */
-export function openTab(list: readonly string[], key: string, after: string | null = null): string[] {
+/** With separate tabs: a thread has a set of its own, other workspaces share their project's. */
+export function tabSet(key: string, projectId: string | null): string {
+  if (key.startsWith("thread/")) return key;
+  const project = key.startsWith("project/") ? key.slice("project/".length) : projectId;
+  return project === null ? key : `project/${project}`;
+}
+
+/**
+ * Open `key` (once), placed after the active tab; the oldest tab drops off past the limit.
+ * The limit counts only the tabs of one set, so opening a project never drops another's.
+ */
+export function openTab(list: readonly string[], key: string, after: string | null = null, setOf: (key: string) => string = () => ""): string[] {
   if (list.includes(key)) return [...list];
-  const at = after !== null && list.includes(after) ? list.indexOf(after) + 1 : list.length;
+  const set = setOf(key);
+  const at = after !== null && list.includes(after) && setOf(after) === set ? list.indexOf(after) + 1 : list.length;
   const next = [...list.slice(0, at), key, ...list.slice(at)];
-  while (next.length > MAX_OPEN) next.splice(next.findIndex((k) => k !== key), 1);
+  while (next.filter((k) => setOf(k) === set).length > MAX_OPEN) next.splice(next.findIndex((k) => k !== key && setOf(k) === set), 1);
   return next;
 }
 
@@ -31,7 +44,7 @@ export function closeTab(list: readonly string[], key: string, active: string): 
 export function parseSaved(raw: string | null): string[] {
   try {
     const value = JSON.parse(raw ?? "[]");
-    return Array.isArray(value) ? [...new Set(value.filter(isWorkspaceKey))].slice(0, MAX_OPEN) : [];
+    return Array.isArray(value) ? [...new Set(value.filter(isWorkspaceKey))].slice(0, MAX_SAVED) : [];
   } catch {
     return [];
   }

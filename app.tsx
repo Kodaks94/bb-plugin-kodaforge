@@ -5,6 +5,7 @@ import {
   definePluginApp,
   useBbNavigate,
   useRpc,
+  useSettings,
   type ExperimentalThreadTabProps,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
@@ -13,7 +14,7 @@ import { groupWorkspaces } from "@/lib/workspaces";
 import { Workbench } from "@/components/Workbench";
 import { KodaIcon } from "@/components/KodaIcon";
 import { Icon } from "@/components/ui/icon";
-import { closeTab, openTab, parseSaved } from "@/lib/open-workspaces";
+import { closeTab, MAX_OPEN, openTab, parseSaved, tabSet } from "@/lib/open-workspaces";
 
 const PANEL_PATH = "forge";
 
@@ -66,12 +67,33 @@ function IdePage({ subPath }: PluginNavPanelProps) {
 
   // Workspaces open as tabs; each stays mounted so its buffers and terminals survive switching.
   const [open, setOpen] = useState<string[]>(() => parseSaved(localStorage.getItem(OPEN_KEY)));
-  const previous = useRef<string | null>(null);
+  const byKey = useMemo(() => new Map((workspaces ?? []).map((w) => [`${w.ref.kind}/${w.ref.id}`, w])), [workspaces]);
+  // With separate tabs, only the active workspace's set shows. Which project an environment
+  // outside the picker belongs to, the server knows.
+  const { values: pluginSettings, isLoading: settingsLoading } = useSettings();
+  const separate = pluginSettings?.separateTabs === true;
+  const [projects, setProjects] = useState<Record<string, string | null>>({});
   useEffect(() => {
-    if (active === null) return;
-    setOpen((list) => openTab(list, active, previous.current));
+    if (!separate || workspaces === null) return;
+    for (const key of open) {
+      const scope = parseScope(key);
+      if (scope?.kind !== "environment" || byKey.has(key) || projects[key] !== undefined) continue;
+      rpc.call("resolve", { scope }).then(
+        (found) => setProjects((all) => ({ ...all, [key]: found.projectId })),
+        () => setProjects((all) => ({ ...all, [key]: null })),
+      );
+    }
+  }, [open, workspaces, separate]);
+  const setOf = (key: string) => (separate ? tabSet(key, byKey.get(key)?.projectId ?? projects[key] ?? null) : "");
+  const visible = settingsLoading ? open.filter((key) => key === active) : active === null ? open : open.filter((key) => setOf(key) === setOf(active));
+  const previous = useRef<string | null>(null);
+  const recent = useRef<string[]>([]);
+  useEffect(() => {
+    if (active === null || settingsLoading) return;
+    setOpen((list) => openTab(list, active, previous.current, setOf));
     previous.current = active;
-  }, [active]);
+    recent.current = [active, ...recent.current.filter((key) => key !== active)].slice(0, MAX_OPEN);
+  }, [active, settingsLoading]);
   useEffect(() => {
     localStorage.setItem(OPEN_KEY, JSON.stringify(open));
   }, [open]);
@@ -79,12 +101,11 @@ function IdePage({ subPath }: PluginNavPanelProps) {
   const go = (key: string) => navigate.toPluginPanel(PANEL_PATH, { subPath: key });
   const close = (key: string) => {
     if (dirtySnapshot[key] && !window.confirm(`${labelFor(key).title} has unsaved changes. Close it anyway?`)) return;
-    const next = closeTab(open, key, active ?? key);
-    setOpen(next.list);
+    const next = closeTab(visible, key, active ?? key);
+    setOpen(open.filter((k) => k !== key));
     if (key === active) go(next.active ?? "");
   };
 
-  const byKey = useMemo(() => new Map((workspaces ?? []).map((w) => [`${w.ref.kind}/${w.ref.id}`, w])), [workspaces]);
   function labelFor(key: string): { title: string; detail: string; projectId: string | null; kind: string } {
     const option = byKey.get(key);
     const kind = key.split("/")[0]!;
@@ -94,7 +115,7 @@ function IdePage({ subPath }: PluginNavPanelProps) {
 
   const tabs = (
     <WorkspaceTabs
-      open={open}
+      open={visible}
       active={active}
       labelFor={labelFor}
       groups={groupWorkspaces(workspaces ?? [])}
@@ -111,7 +132,9 @@ function IdePage({ subPath }: PluginNavPanelProps) {
       </div>
     );
   }
-  const shown = open.includes(active) ? open : [...open, active];
+  // Another set's workspace stays mounted while it was used lately or has unsaved edits.
+  const mounted = open.filter((key) => visible.includes(key) || recent.current.includes(key) || dirtySnapshot[key]);
+  const shown = mounted.includes(active) ? mounted : [...mounted, active];
   return (
     <div className="h-full min-h-0">
       {shown.map((key) => {

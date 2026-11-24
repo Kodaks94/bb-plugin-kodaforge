@@ -246,6 +246,13 @@ export default async function plugin(bb: BbPluginApi) {
       description: "One name per line. Hidden from Quick Open, the explorer and search.",
       default: DEFAULT_EXCLUDED,
     },
+    separateTabs: {
+      type: "boolean",
+      label: "Separate tabs per project",
+      description:
+        "Show only the open project's workspaces as tabs; a thread has its own. Other projects' tabs, and their unsaved files, stay as they are and come back with their project.",
+      default: false,
+    },
     formatOnSave: {
       type: "boolean",
       label: "Format on save",
