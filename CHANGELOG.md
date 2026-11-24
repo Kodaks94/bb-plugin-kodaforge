@@ -3,6 +3,15 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [Unreleased]
+
+### Added
+- **Explorer: Open in Terminal.** Right-click a folder, a file (its folder) or the empty area
+  to open a terminal there, on the workspace's machine. It is found again after a restart.
+- **Explorer menu items from other plugins.** A `kodaforge:explorer-menu` event on `window`
+  carries the machine, the absolute path and the kind of the entry; listeners push
+  `{ label, run }` into `detail.items`, for example to open a system file manager.
+
 ## [0.7.0] - 2026-11-04
 
 ### Added
