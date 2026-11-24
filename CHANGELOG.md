@@ -3,6 +3,14 @@
 All notable changes to KodaForge. Versions follow [semver](https://semver.org); BB installs
 them from the `vX.Y.Z` tags.
 
+## [Unreleased]
+
+### Added
+- **Markdown and SVG previews.** These files open rendered, with a Source / Preview button in
+  the tab strip and a palette command. Source and preview can sit side by side in two groups,
+  and edits show in the preview as you type. Going to a line, a search hit or a new file
+  opens the source.
+
 ## [0.7.0] - 2026-11-04
 
 ### Added

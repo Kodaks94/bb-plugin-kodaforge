@@ -38,6 +38,7 @@ import { SearchEverywhere, type TextHit } from "./SearchEverywhere";
 import { taskArgv, type Task } from "@/lib/tasks";
 import type { Hue } from "@/lib/file-colors";
 import { remapPath } from "@/lib/editor-state";
+import { keepOpenTabs, sourceKey, textPreview } from "@/lib/text-preview";
 import { cleanupOnSave, editorOptions } from "@/lib/settings";
 import { useSettings } from "./use-settings";
 import { SettingsView } from "./SettingsView";
@@ -299,6 +300,29 @@ export function Workbench({
     else editors.current.set(index, editor);
   }, []);
 
+  // Markdown and SVG tabs open as a preview; these show their source.
+  const [sourceTabs, setSourceTabs] = useState<ReadonlySet<string>>(new Set());
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const showSource = useCallback((groupId: number, path: string, source: boolean) => {
+    setSourceTabs((current) => {
+      const key = sourceKey(groupId, path);
+      if (current.has(key) === source) return current;
+      const next = new Set(current);
+      if (source) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    setSourceTabs((current) => keepOpenTabs(current, state.groups));
+  }, [state.groups]);
+  const togglePreview = () => {
+    const group = state.groups[state.focused];
+    if (group?.active == null || textPreview(group.active) === null) return;
+    showSource(group.id, group.active, !sourceTabs.has(sourceKey(group.id, group.active)));
+  };
+
   // Dispose a model once no group shows its tab.
   const open = openPaths(state);
   const trackedPaths = useRef(new Set<string>());
@@ -326,6 +350,8 @@ export function Workbench({
   );
 
   // Open a file and select a range in it (search results, problems, LSP locations).
+  const sourceTabsRef = useRef(sourceTabs);
+  sourceTabsRef.current = sourceTabs;
   const focusedRef = useRef(state.focused);
   focusedRef.current = state.focused;
   const openAt = useCallback(
@@ -336,6 +362,13 @@ export function Workbench({
       for (let frame = 0; frame < 20; frame++) {
         const editor = editors.current.get(focusedRef.current);
         if (editor !== undefined && target !== null && editor.getModel() === target) {
+          // A place in the text can only be shown in the source.
+          const group = stateRef.current.groups[focusedRef.current];
+          if (group !== undefined && textPreview(path) !== null && !sourceTabsRef.current.has(sourceKey(group.id, path))) {
+            showSource(group.id, path, true);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            continue;
+          }
           const range = { startLineNumber: line, startColumn: column, endLineNumber: line, endColumn: column + length };
           editor.setSelection(range);
           editor.revealRangeInCenterIfOutsideViewport(range);
@@ -565,6 +598,7 @@ export function Workbench({
       { id: "threads", label: "Chat: Show Threads", run: () => openSide("threads") },
       { id: "workflows", label: "Workflows: Show Workflows", run: () => openSide("workflows") },
       { id: "close", label: "View: Close Editor", run: () => activePath && requestClose(activePath, state.focused) },
+      { id: "preview", label: "View: Toggle Preview / Source", run: togglePreview },
       { id: "split", label: "View: Split Editor Right", run: () => dispatch({ type: "split" }) },
       { id: "sidebar", label: "View: Toggle Side Bar", run: () => setView((v) => (v === null ? "explorer" : null)) },
       { id: "panel", label: "View: Toggle Panel", run: () => setPanel((p) => (p === null ? "output" : null)) },
@@ -603,7 +637,7 @@ export function Workbench({
       }));
     return [...own, ...editorActions];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [palette, activePath, docs, state.focused, requestClose, save]);
+  }, [palette, activePath, docs, state.focused, requestClose, save, sourceTabs]);
 
   // Shortcuts are scoped to this workbench, so it takes focus when it opens.
   const rootRef = useRef<HTMLDivElement>(null);
@@ -985,6 +1019,7 @@ export function Workbench({
                       activePath={activePath}
                       changeTick={changeTick}
                       onOpen={(path, toSide) => void openFile(path, toSide)}
+                      onCreated={(path) => void openAt(path, 1, 1)}
                       onRenamed={onRenamed}
                       onDeleted={onDeleted}
                       log={log}
@@ -1077,6 +1112,8 @@ export function Workbench({
                             />
                           ) : null
                         }
+                        showsSource={(path) => sourceTabs.has(sourceKey(group.id, path))}
+                        onShowSource={(path, source) => showSource(group.id, path, source)}
                         onDropFile={(path, where) => {
                           dispatch({ type: "focus", group: index });
                           void openFile(path, where === "side");

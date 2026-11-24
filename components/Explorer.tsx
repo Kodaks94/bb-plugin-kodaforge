@@ -40,6 +40,7 @@ export function Explorer({
   activePath,
   changeTick,
   onOpen,
+  onCreated,
   onRenamed,
   onDeleted,
   log,
@@ -49,6 +50,8 @@ export function Explorer({
   /** Bumped by the workbench whenever the watcher reports a change. */
   changeTick: number;
   onOpen(path: string, toSide?: boolean): void;
+  /** A new, empty file: open it for writing. */
+  onCreated(path: string): void;
   onRenamed(from: string, to: string): void;
   onDeleted(path: string): void;
   log(line: string): void;
@@ -156,7 +159,7 @@ export function Explorer({
       void act(current.kind === "newFile" ? "New file" : "New folder", async () => {
         if (current.kind === "newFile") {
           await rpc.call("createFile", { scope, path });
-          onOpen(path);
+          onCreated(path);
         } else {
           await rpc.call("createFolder", { scope, path });
         }
